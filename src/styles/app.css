@@ -1447,32 +1447,6 @@ input[type="color"].light-color-input {
   background: var(--bg-input);
 }
 
-/* Primary button */
-#fur-rebuild {
-  width: 100%;
-  margin-top: 4px;
-  padding: 11px 16px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--btn-primary-bg);
-  color: var(--accent-on);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  cursor: pointer;
-  box-shadow: var(--btn-primary-shadow);
-  transition: filter 0.15s, transform 0.1s, box-shadow 0.15s;
-}
-
-#fur-rebuild:hover {
-  filter: brightness(1.06);
-}
-
-#fur-rebuild:active {
-  transform: scale(0.99);
-}
-
 .status-block {
   margin-top: 14px;
   padding: 12px;

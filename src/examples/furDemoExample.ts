@@ -180,7 +180,6 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
   const furDiffuseCache = new Map<string, BaseTexture>();
   const statusEl = panel?.querySelector<HTMLElement>("#fur-status");
   const statsEl = panel?.querySelector<HTMLElement>("#fur-stats");
-  const regenBtn = panel?.querySelector<HTMLButtonElement>("#fur-rebuild");
   const fileNameEl = panel?.querySelector<HTMLElement>("#model-file-name");
   const furEnabledInput = panel?.querySelector<HTMLInputElement>("#fur-enabled");
 
@@ -480,7 +479,6 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       applyLiveFurSettings();
     });
 
-    regenBtn?.addEventListener("click", () => void rebuildFur());
     wireModelUpload(panel, (file) => void loadGlb(file));
   }
 
