@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="studio">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GLB Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="layout" data-viewport-focus="studio">
+      <main id="viewport">
+        <canvas id="renderCanvas"></canvas>
+        <div
+          id="viewport-empty"
+          class="viewport-empty"
+          role="region"
+          aria-label="Import model"
+        >
+          <div class="viewport-empty-card">
+            <svg
+              class="viewport-empty-graphic"
+              viewBox="0 0 120 120"
+              width="120"
+              height="120"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <defs>
+                <linearGradient id="viewport-empty-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.9" />
+                  <stop offset="100%" stop-color="var(--accent)" stop-opacity="0.35" />
+                </linearGradient>
+              </defs>
+              <rect
+                x="18"
+                y="28"
+                width="64"
+                height="64"
+                rx="10"
+                fill="none"
+                stroke="url(#viewport-empty-grad)"
+                stroke-width="1.5"
+                stroke-dasharray="5 4"
+              />
+              <path
+                d="M34 78 L50 58 L66 70 L82 48 L98 78 Z"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.25"
+                stroke-linejoin="round"
+                opacity="0.45"
+              />
+              <text
+                x="50"
+                y="52"
+                font-family="var(--font-mono), ui-monospace, monospace"
+                font-size="11"
+                font-weight="600"
+                fill="currentColor"
+                opacity="0.55"
+              >
+                GLB
+              </text>
+              <g class="viewport-empty-arrows" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                <path d="M60 8 L60 20 M60 8 L54 14 M60 8 L66 14" opacity="0.5" />
+                <path d="M8 60 L20 60 M8 60 L14 54 M8 60 L14 66" opacity="0.35" />
+                <path d="M112 60 L100 60 M112 60 L106 54 M112 60 L106 66" opacity="0.35" />
+              </g>
+            </svg>
+            <p class="viewport-empty-title">Drop your model here</p>
+            <p class="viewport-empty-hint">GLB or glTF · drag onto the view or use the panel</p>
+            <button type="button" class="viewport-empty-browse">Browse file</button>
+          </div>
+        </div>
+        <button
+          type="button"
+          id="fur-focus-latch"
+          class="fur-focus-latch"
+          aria-pressed="false"
+          aria-label="Enlarge 3D view"
+          title="Enlarge 3D view (F)"
+        >
+          <span class="fur-focus-latch-mark" aria-hidden="true">
+            <span class="fur-focus-latch-corner fur-focus-latch-corner--tl"></span>
+            <span class="fur-focus-latch-corner fur-focus-latch-corner--tr"></span>
+            <span class="fur-focus-latch-corner fur-focus-latch-corner--bl"></span>
+            <span class="fur-focus-latch-corner fur-focus-latch-corner--br"></span>
+          </span>
+          <span class="fur-focus-latch-text">
+            <span class="fur-focus-latch-when-studio">Enlarge view</span>
+            <span class="fur-focus-latch-when-enlarged">Back to studio</span>
+          </span>
+        </button>
+        <aside
+          id="viewport-perf"
+          class="viewport-perf is-collapsed"
+          aria-label="Performance budget"
+        >
+          <button type="button" class="viewport-perf-toggle" aria-expanded="false">
+            <span class="viewport-perf-led" aria-hidden="true"></span>
+            <span class="viewport-perf-toggle-text">
+              <span class="viewport-perf-label">Performance</span>
+              <span id="viewport-perf-chip" class="viewport-perf-chip" data-level="good">—</span>
+            </span>
+            <span class="viewport-perf-chevron" aria-hidden="true"></span>
+          </button>
+          <div class="viewport-perf-panel" hidden>
+            <p class="viewport-perf-head">Device budget</p>
+            <p id="viewport-perf-detail" class="viewport-perf-detail"></p>
+            <div id="viewport-perf-legend" class="viewport-perf-legend"></div>
+            <div id="viewport-perf-grid" class="viewport-perf-grid"></div>
+          </div>
+        </aside>
+        <div id="viewer-hud" aria-label="3D navigation">
+          <p id="viewer-hint">
+            <strong>Controls</strong>
+            <span class="hint-row">Scroll wheel — zoom</span>
+            <span class="hint-row">LMB — rotate · RMB — pan</span>
+            <span class="hint-row hint-row-muted">Double-click — reset view</span>
+          </p>
+          <button type="button" id="viewer-reset">Reset view</button>
+        </div>
+      </main>
+
+      <aside id="fur-panel" aria-label="Inspector">
+        <header class="panel-header">
+          <div class="panel-header-top">
+            <div class="panel-brand">
+              <div class="panel-logo" aria-hidden="true"></div>
+              <div>
+                <h1 class="panel-title">GLB Studio</h1>
+                <p class="panel-tagline">Real time GLB Preview</p>
+              </div>
+            </div>
+            <div class="theme-switch" role="group" aria-label="Appearance">
+              <button type="button" class="theme-opt is-active" data-theme="studio" aria-pressed="true">
+                Studio
+              </button>
+              <button type="button" class="theme-opt" data-theme="display" aria-pressed="false">
+                Display
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <div class="panel-scroll">
+          <section class="panel-section collapsible is-open" data-section="model" data-default-open="open">
+            <button type="button" class="section-toggle" aria-expanded="true">
+              <span class="section-toggle-text">
+                <span class="section-title">Model</span>
+                <span class="section-desc">Import GLB or glTF</span>
+              </span>
+              <span class="section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="section-body">
+              <div class="section-body-inner">
+                <label class="upload-zone">
+                  <span class="upload-icon" aria-hidden="true">↑</span>
+                  <span class="upload-label">Upload GLB or glTF</span>
+                  <span class="upload-hint">Drag & drop or click to browse</span>
+                  <input id="model-upload" type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" />
+                </label>
+                <div id="model-file-name"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel-section collapsible" data-section="lighting" data-default-open="closed">
+            <button type="button" class="section-toggle" aria-expanded="false">
+              <span class="section-toggle-text">
+                <span class="section-title">Lighting</span>
+                <span class="section-desc">Key, fill, and rim</span>
+              </span>
+              <span class="section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="section-body">
+              <div class="section-body-inner">
+                <div class="light-card">
+                  <div class="light-card-head">
+                    <span class="light-card-title">Key</span>
+                    <label class="light-enable">
+                      <input type="checkbox" id="light-key-enabled" checked />
+                      <span class="toggle-track" aria-hidden="true"></span>
+                      <span>On</span>
+                    </label>
+                  </div>
+                  <div class="light-grid-2">
+                    <div class="ctl">
+                      <label class="ctl-label"><span>Azimuth</span><span class="val" id="light-key-az-val"></span></label>
+                      <input id="light-key-az" type="range" min="0" max="360" step="1" value="318" />
+                    </div>
+                    <div class="ctl">
+                      <label class="ctl-label"><span>Elevation</span><span class="val" id="light-key-el-val"></span></label>
+                      <input id="light-key-el" type="range" min="-10" max="89" step="1" value="52" />
+                    </div>
+                  </div>
+                  <div class="ctl">
+                    <label class="ctl-label"><span>Intensity</span><span class="val" id="light-key-int-val"></span></label>
+                    <input id="light-key-int" type="range" min="0" max="3" step="0.05" value="1.2" />
+                  </div>
+                  <div class="ctl">
+                    <label class="ctl-label"><span>Color</span></label>
+                    <input id="light-key-color" class="light-color-input" type="color" value="#fff6ee" />
+                  </div>
+                </div>
+
+                <div class="light-card">
+                  <div class="light-card-head">
+                    <span class="light-card-title">Fill</span>
+                    <label class="light-enable">
+                      <input type="checkbox" id="light-fill-enabled" checked />
+                      <span class="toggle-track" aria-hidden="true"></span>
+                      <span>On</span>
+                    </label>
+                  </div>
+                  <div class="light-grid-2">
+                    <div class="ctl">
+                      <label class="ctl-label"><span>Azimuth</span><span class="val" id="light-fill-az-val"></span></label>
+                      <input id="light-fill-az" type="range" min="0" max="360" step="1" value="24" />
+                    </div>
+                    <div class="ctl">
+                      <label class="ctl-label"><span>Elevation</span><span class="val" id="light-fill-el-val"></span></label>
+                      <input id="light-fill-el" type="range" min="-10" max="89" step="1" value="62" />
+                    </div>
+                  </div>
+                  <div class="ctl">
+                    <label class="ctl-label"><span>Intensity</span><span class="val" id="light-fill-int-val"></span></label>
+                    <input id="light-fill-int" type="range" min="0" max="2" step="0.05" value="0.55" />
+                  </div>
+                  <div class="ctl">
+                    <label class="ctl-label"><span>Color</span></label>
+                    <input id="light-fill-color" class="light-color-input" type="color" value="#dcecff" />
+                  </div>
+                </div>
+
+                <div class="light-card">
+                  <div class="light-card-head">
+                    <span class="light-card-title">Rim</span>
+                    <label class="light-enable">
+                      <input type="checkbox" id="light-rim-enabled" checked />
+                      <span class="toggle-track" aria-hidden="true"></span>
+                      <span>On</span>
+                    </label>
+                  </div>
+                  <div class="light-grid-2">
+                    <div class="ctl">
+                      <label class="ctl-label"><span>Azimuth</span><span class="val" id="light-rim-az-val"></span></label>
+                      <input id="light-rim-az" type="range" min="0" max="360" step="1" value="148" />
+                    </div>
+                    <div class="ctl">
+                      <label class="ctl-label"><span>Elevation</span><span class="val" id="light-rim-el-val"></span></label>
+                      <input id="light-rim-el" type="range" min="-10" max="89" step="1" value="28" />
+                    </div>
+                  </div>
+                  <div class="ctl">
+                    <label class="ctl-label"><span>Intensity</span><span class="val" id="light-rim-int-val"></span></label>
+                    <input id="light-rim-int" type="range" min="0" max="3" step="0.05" value="0.9" />
+                  </div>
+                  <div class="ctl">
+                    <label class="ctl-label"><span>Color</span></label>
+                    <input id="light-rim-color" class="light-color-input" type="color" value="#e8f4ff" />
+                  </div>
+                </div>
+
+                <div class="ctl">
+                  <label class="ctl-label"><span>Ambient</span><span class="val" id="light-ambient-val"></span></label>
+                  <input id="light-ambient" type="range" min="0" max="0.6" step="0.01" value="0.12" />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel-section collapsible is-open" data-section="fur" data-default-open="open">
+            <button type="button" class="section-toggle" aria-expanded="true">
+              <span class="section-toggle-text">
+                <span class="section-title">Fur material</span>
+                <span class="section-desc">Shell layers &amp; controls</span>
+              </span>
+              <span class="section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="section-body">
+              <div class="section-body-inner">
+                <label class="row-check">
+                  <strong>Enable fur</strong>
+                  <input type="checkbox" id="fur-enabled" checked />
+                  <span class="toggle-track" aria-hidden="true"></span>
+                </label>
+
+                <div class="ctl">
+                  <label class="ctl-label"><span>Shell quality</span><span class="val" id="fur-quality-val"></span></label>
+                  <input id="fur-quality" type="range" min="4" max="32" step="1" value="12" />
+                </div>
+                <div class="ctl">
+                  <label class="ctl-label"><span>Fur length</span><span class="val" id="fur-length-val"></span></label>
+                  <input id="fur-length" type="range" min="0" max="1.5" step="0.001" value="0.05" />
+                </div>
+                <p class="hint">Distance of shell layers above the surface, scaled to mesh size.</p>
+                <div class="ctl">
+                  <label class="ctl-label"><span>Stack depth</span><span class="val" id="fur-spacing-val"></span></label>
+                  <input id="fur-spacing" type="range" min="0" max="3" step="0.01" value="0.35" />
+                </div>
+                <div class="ctl">
+                  <label class="ctl-label"><span>Fur angle</span><span class="val" id="fur-angle-val"></span></label>
+                  <input id="fur-angle" type="range" min="0" max="1.57" step="0.05" value="0" />
+                </div>
+                <div class="ctl">
+                  <label class="ctl-label"><span>Density</span><span class="val" id="fur-density-val"></span></label>
+                  <input id="fur-density" type="range" min="4" max="40" step="1" value="20" />
+                </div>
+                <div class="ctl">
+                  <label class="ctl-label"><span>Animation speed</span><span class="val" id="fur-speed-val"></span></label>
+                  <input id="fur-speed" type="range" min="50" max="600" step="10" value="300" />
+                </div>
+                <div class="ctl">
+                  <label class="ctl-label"><span>Gravity</span><span class="val" id="fur-gravity-y-val"></span></label>
+                  <input id="fur-gravity-y" type="range" min="-3" max="1" step="0.1" value="-1" />
+                </div>
+
+                <p class="hint">Quality changes need a rebuild. Other parameters update live.</p>
+                <button type="button" id="fur-rebuild">Rebuild fur</button>
+                <div class="status-block">
+                  <div id="fur-stats"></div>
+                  <div id="fur-status">Starting…</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
