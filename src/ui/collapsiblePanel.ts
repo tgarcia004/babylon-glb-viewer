@@ -22,7 +22,7 @@ export function initCollapsiblePanel(): void {
     const inner = section.querySelector<HTMLElement>(".section-body-inner");
     if (!toggle || !body) continue;
 
-    const defaultOpen = section.dataset.defaultOpen !== "closed";
+    const defaultOpen = section.dataset.defaultOpen === "open";
     let open = loadOpen(id, defaultOpen);
 
     const apply = () => {

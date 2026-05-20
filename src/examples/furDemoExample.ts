@@ -57,7 +57,9 @@ import {
   configureViewerCamera,
   frameMeshes,
 } from "../viewer/configureCamera";
-import { registerThemeScene } from "../ui/theme";
+import { registerThemeScene, type ViewerTheme } from "../ui/theme";
+import { furSettingsFromSnapshot, type SceneSnapshotV1 } from "../scene/sceneSnapshot";
+import { wireSceneSnapshotPanel } from "../ui/wireSceneSnapshot";
 import {
   refreshViewportPerfIndicator,
   registerPerfMetricsProvider,
@@ -173,6 +175,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
   let importedLooksLikeBlenderShells = false;
   let importedShellStack = false;
   let lastImportSummary: ReturnType<typeof summarizeImport> | null = null;
+  let currentModelFileName: string | null = null;
 
   const live: LiveFur = {
     enabled: false,
@@ -486,6 +489,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     live.enabled = false;
     if (furEnabledInput) furEnabledInput.checked = false;
 
+    currentModelFileName = file.name;
     if (fileNameEl) fileNameEl.textContent = file.name;
     enableAllImportedMeshes();
     await rebuildFur();
@@ -553,6 +557,58 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     syncPbrProfileUi();
 
     wireModelUpload(panel, (file) => void loadGlb(file));
+
+    wireSceneSnapshotPanel(panel, scene, lightRig, lighting, camera, {
+      getSource: () => ({
+        modelFileName: currentModelFileName,
+        theme: (document.documentElement.dataset.theme === "display" ? "display" : "studio") as ViewerTheme,
+        pbrProfileId,
+        furEnabled: live.enabled,
+        furSettings: live.settings,
+        lighting,
+        camera,
+      }),
+      applySnapshot: async (snapshot: SceneSnapshotV1) => {
+        const notes: string[] = [];
+
+        pbrProfileId = snapshot.pbrProfileId;
+        syncPbrProfileUi();
+
+        live.enabled = snapshot.fur.enabled;
+        live.settings = furSettingsFromSnapshot(snapshot.fur.settings);
+        if (furEnabledInput) furEnabledInput.checked = live.enabled;
+
+        if (snapshot.model?.fileName) {
+          if (!currentModelFileName) {
+            notes.push(`Load ${snapshot.model.fileName} to restore the full scene`);
+          } else if (
+            currentModelFileName.toLowerCase() !== snapshot.model.fileName.toLowerCase()
+          ) {
+            notes.push(
+              `Model mismatch: loaded ${currentModelFileName}, preset expects ${snapshot.model.fileName}`,
+            );
+          } else {
+            notes.push("Model name matches");
+          }
+        }
+
+        if (importedMeshes.length > 0) {
+          refreshPbrProfile();
+        } else if (live.enabled) {
+          notes.push("Fur settings saved — enable after loading the model");
+        }
+
+        await rebuildFur();
+        refreshCameraConstraints();
+
+        if (importedMeshes.length > 0) {
+          frameMeshes(camera, meshesForCameraFrame());
+        }
+
+        notes.push("Preset applied");
+        return notes;
+      },
+    });
   }
 
   if (furEnabledInput) furEnabledInput.checked = false;

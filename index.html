@@ -149,8 +149,8 @@
         </header>
 
         <div class="panel-scroll">
-          <section class="panel-section collapsible is-open" data-section="model" data-default-open="open">
-            <button type="button" class="section-toggle" aria-expanded="true">
+          <section class="panel-section collapsible" data-section="model" data-default-open="closed">
+            <button type="button" class="section-toggle" aria-expanded="false">
               <span class="section-toggle-text">
                 <span class="section-title">Model</span>
                 <span class="section-desc">Import GLB or glTF</span>
@@ -170,8 +170,45 @@
             </div>
           </section>
 
-          <section class="panel-section collapsible is-open" data-section="pbr-material" data-default-open="open">
-            <button type="button" class="section-toggle" aria-expanded="true">
+          <section class="panel-section collapsible" data-section="scene-preset" data-default-open="closed">
+            <button type="button" class="section-toggle" aria-expanded="false">
+              <span class="section-toggle-text">
+                <span class="section-title">Scene preset</span>
+                <span class="section-desc">Export or import viewer settings</span>
+              </span>
+              <span class="section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="section-body">
+              <div class="section-body-inner">
+                <p class="hint">
+                  Saves lighting, camera, PBR profile, fur controls, and theme. The GLB is not embedded — load the
+                  same model file after import. Export opens Save As (Chrome / Edge). Drop a preset
+                  <code>.json</code> onto Import JSON or click to browse.
+                </p>
+                <div class="scene-preset-actions">
+                  <button type="button" id="scene-export-json" class="scene-preset-btn">Export JSON</button>
+                  <button
+                    type="button"
+                    id="scene-import-json"
+                    class="scene-preset-btn scene-preset-btn--secondary"
+                    title="Import scene preset — click or drop a .json file"
+                  >
+                    Import JSON
+                  </button>
+                  <input
+                    id="scene-import-input"
+                    type="file"
+                    accept=".json,application/json"
+                    hidden
+                  />
+                </div>
+                <div id="scene-preset-status" class="hint scene-preset-status"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel-section collapsible" data-section="pbr-material" data-default-open="closed">
+            <button type="button" class="section-toggle" aria-expanded="false">
               <span class="section-toggle-text">
                 <span class="section-title">PBR material</span>
                 <span class="section-desc">Flip through categories</span>

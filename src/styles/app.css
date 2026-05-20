@@ -1308,6 +1308,54 @@ body.is-viewport-enlarged .fur-focus-latch::before {
   display: none;
 }
 
+.scene-preset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.scene-preset-btn {
+  flex: 1 1 auto;
+  min-width: 7rem;
+  padding: 9px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--accent);
+  color: var(--bg-panel);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.scene-preset-btn:hover {
+  filter: brightness(1.06);
+}
+
+.scene-preset-btn--secondary {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.scene-preset-btn--secondary:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
+}
+
+.scene-preset-btn.is-dragover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-input));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.scene-preset-status {
+  margin-top: 10px;
+  min-height: 1.25em;
+  line-height: 1.45;
+}
+
 /* Controls */
 .ctl {
   margin-bottom: 14px;
