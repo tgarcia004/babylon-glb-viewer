@@ -13,6 +13,7 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { ImportMeshAsync } from "@babylonjs/core/Loading/sceneLoader";
 import type { BaseTexture } from "@babylonjs/core/Materials/Textures/baseTexture";
 import { Material } from "@babylonjs/core/Materials/material";
+import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 
@@ -23,10 +24,20 @@ import {
   describeMaterialSurface,
   extractMaterialSurfaceFromMesh,
   needsOpacityMerge,
+  surfaceUsesAlbedoAlpha,
   surfaceCacheKey,
   type MaterialSurface,
 } from "../material/extractMaterialSurface";
-import { normalizeImportedGltfMaterials } from "../material/normalizeImportedMaterials";
+import {
+  applyPbrMaterialProfile,
+  applyPbrMaterialProfileToMaterial,
+  cyclePbrProfile,
+  getPbrMaterialProfile,
+  normalizeImportedGltfMaterials,
+  PBR_MATERIAL_PROFILES,
+  profileIndex,
+  type PbrMaterialProfileId,
+} from "../material/normalizeImportedMaterials";
 import {
   collectRenderableMeshes,
   formatImportStatus,
@@ -155,6 +166,8 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
   const fabricTex = createFabricAlbedo(scene, "fabricAlbedo");
 
   let hullMesh: Mesh | null = null;
+  let hullPbrMaterial: PBRMaterial | null = null;
+  let pbrProfileId: PbrMaterialProfileId = "furShell";
   let importedMeshes: AbstractMesh[] = [];
   let importRoots: AbstractMesh[] = [];
   let importedLooksLikeBlenderShells = false;
@@ -314,7 +327,9 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     }
 
     const tex = surface.diffuseTexture ?? fallback.texture;
-    return { texture: tex, bakedMask: false };
+    const bakedMask =
+      pbrProfileId === "albedoAlpha" ? surfaceUsesAlbedoAlpha(surface) : false;
+    return { texture: tex, bakedMask };
   }
 
   async function rebuildFur(): Promise<void> {
@@ -330,7 +345,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     }
 
     if (!live.enabled) {
-      hullSurface = extractMaterialSurfaceFromMesh(hullMesh.material);
+      hullSurface = extractMaterialSurfaceFromMesh(hullPbrMaterial ?? hullMesh.material);
       syncImportedMeshVisibility();
       if (statsEl) statsEl.textContent = "Fur off — base material only.";
       if (statusEl) {
@@ -346,13 +361,15 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       return;
     }
 
+    const surfaceForFur =
+      hullSurface ?? extractMaterialSurfaceFromMesh(hullPbrMaterial ?? hullMesh.material);
+    hullSurface = surfaceForFur;
     const captured = captureDiffuseForFur(hullMesh);
-    hullSurface = captured.surface;
 
     let texture = captured.texture;
     let bakedMask = false;
     try {
-      const resolved = await resolveFurDiffuse(hullMesh, captured.surface);
+      const resolved = await resolveFurDiffuse(hullMesh, surfaceForFur);
       texture = resolved.texture;
       bakedMask = resolved.bakedMask;
     } catch {
@@ -368,7 +385,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       hullMesh,
       texture,
       { ...live.settings, quality: effectiveQuality },
-      captured.surface,
+      surfaceForFur,
       bakedMask,
     );
     syncImportedMeshVisibility();
@@ -385,11 +402,45 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       statsEl.textContent = `${fur.shells.length} shells · ${fur.triangleCount.toLocaleString()} tris${capped}`;
     }
     if (statusEl) {
-      const matNote = captured.surface ? describeMaterialSurface(captured.surface) : "";
-      statusEl.textContent = `Fur on your model${matNote ? ` · ${matNote}` : ""}${shellNote}`;
+      const profile = getPbrMaterialProfile(pbrProfileId);
+      const matNote = surfaceForFur ? describeMaterialSurface(surfaceForFur) : "";
+      statusEl.textContent = `Fur on · ${profile.label}${matNote ? ` · ${matNote}` : ""}${shellNote}`;
     }
     refreshCameraConstraints();
     refreshViewportPerfIndicator();
+  }
+
+  function syncPbrProfileUi(): void {
+    const profile = getPbrMaterialProfile(pbrProfileId);
+    const labelEl = panel?.querySelector<HTMLElement>("#pbr-profile-label");
+    const descEl = panel?.querySelector<HTMLElement>("#pbr-profile-desc");
+    const indexEl = panel?.querySelector<HTMLElement>("#pbr-profile-index");
+    if (labelEl) labelEl.textContent = profile.label;
+    if (descEl) descEl.textContent = profile.description;
+    if (indexEl) {
+      indexEl.textContent = `${profileIndex(pbrProfileId) + 1} / ${PBR_MATERIAL_PROFILES.length}`;
+    }
+  }
+
+  function refreshPbrProfile(): void {
+    if (importedMeshes.length === 0) return;
+    applyPbrMaterialProfile(importedMeshes, {
+      profile: pbrProfileId,
+      shellStack: importedShellStack,
+    });
+    if (hullPbrMaterial) {
+      applyPbrMaterialProfileToMaterial(hullPbrMaterial, pbrProfileId, 0);
+      hullSurface = extractMaterialSurfaceFromMesh(hullPbrMaterial);
+    }
+    furDiffuseCache.clear();
+    scene.resetCachedMaterial();
+    syncPbrProfileUi();
+    if (live.enabled) {
+      void rebuildFur();
+    } else if (statusEl && hullSurface) {
+      const profile = getPbrMaterialProfile(pbrProfileId);
+      statusEl.textContent = `Fur off · ${profile.label} · ${describeMaterialSurface(hullSurface)}`;
+    }
   }
 
   async function loadGlb(file: File): Promise<void> {
@@ -405,6 +456,9 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
 
     fur?.dispose();
     fur = null;
+    hullPbrMaterial = null;
+    hullSurface = null;
+    furDiffuseCache.clear();
     for (const m of importRoots) {
       if (!m.isDisposed()) m.dispose(false, true);
     }
@@ -418,7 +472,16 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     importedLooksLikeBlenderShells = renderMeshes.length > BLENDER_SHELL_MESH_THRESHOLD;
     importedShellStack = lastImportSummary.looksLikeShellStack;
 
-    normalizeImportedGltfMaterials(renderMeshes, { shellStack: importedShellStack });
+    normalizeImportedGltfMaterials(renderMeshes, {
+      shellStack: importedShellStack,
+      profile: pbrProfileId,
+    });
+    hullPbrMaterial =
+      hullMesh?.material instanceof PBRMaterial ? hullMesh.material : null;
+    hullSurface = hullPbrMaterial
+      ? extractMaterialSurfaceFromMesh(hullPbrMaterial)
+      : null;
+    syncPbrProfileUi();
 
     live.enabled = false;
     if (furEnabledInput) furEnabledInput.checked = false;
@@ -479,11 +542,22 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       applyLiveFurSettings();
     });
 
+    panel.querySelector("#pbr-profile-prev")?.addEventListener("click", () => {
+      pbrProfileId = cyclePbrProfile(pbrProfileId, -1);
+      refreshPbrProfile();
+    });
+    panel.querySelector("#pbr-profile-next")?.addEventListener("click", () => {
+      pbrProfileId = cyclePbrProfile(pbrProfileId, 1);
+      refreshPbrProfile();
+    });
+    syncPbrProfileUi();
+
     wireModelUpload(panel, (file) => void loadGlb(file));
   }
 
   if (furEnabledInput) furEnabledInput.checked = false;
   if (statusEl) statusEl.textContent = "Load a GLB or glTF to preview fur.";
+  syncPbrProfileUi();
   refreshViewportPerfIndicator();
 
   const resetViewBtn = document.getElementById("viewer-reset");

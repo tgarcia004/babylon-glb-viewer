@@ -77,5 +77,8 @@ export function initViewportEmptyState(onFile: (file: File) => void): ViewportEm
   if (root) bindDropTarget(root);
   if (viewport) bindDropTarget(viewport);
 
+  const canvas = document.getElementById("renderCanvas");
+  if (canvas instanceof HTMLCanvasElement) bindDropTarget(canvas);
+
   return { setVisible };
 }

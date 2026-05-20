@@ -67,9 +67,21 @@ export function wireModelUpload(panel: HTMLElement, onFile: (file: File) => void
     if (target instanceof Node && zone.contains(target)) return;
     preventFileDragDefaults(e);
     const file = e.dataTransfer.files?.[0];
-    if (!file || !isModelFile(file)) return;
-    if (target instanceof Node && viewport?.contains(target)) {
-      void onFile(file);
-    }
+    if (file && isModelFile(file)) void onFile(file);
   });
+
+  const canvas = document.getElementById("renderCanvas");
+  if (canvas instanceof HTMLElement) {
+    canvas.addEventListener("dragover", (e) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      preventFileDragDefaults(e);
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    });
+    canvas.addEventListener("drop", (e) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      preventFileDragDefaults(e);
+      const file = e.dataTransfer.files?.[0];
+      if (file && isModelFile(file)) void onFile(file);
+    });
+  }
 }

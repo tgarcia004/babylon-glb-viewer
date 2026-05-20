@@ -9,7 +9,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Material } from "@babylonjs/core/Materials/material";
 import type { BaseTexture } from "@babylonjs/core/Materials/Textures/baseTexture";
-import type { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import type { MaterialSurface } from "../material/extractMaterialSurface";
 
 export const FUR_DEFAULTS = {
@@ -86,6 +86,26 @@ function applySurfaceToFur(fur: FurMaterial, surface: MaterialSurface | null): v
   fur.transparencyMode = Material.MATERIAL_OPAQUE;
 }
 
+function applyFurAlphaMask(
+  fur: FurMaterial,
+  surface: MaterialSurface | null,
+  diffuse: BaseTexture | null,
+  useAlphaMask: boolean,
+): void {
+  if (!useAlphaMask || !diffuse || !(diffuse instanceof Texture)) return;
+
+  diffuse.hasAlpha = true;
+
+  if (surface?.transparencyMode === Material.MATERIAL_ALPHABLEND) {
+    fur.transparencyMode = Material.MATERIAL_ALPHABLEND;
+    fur.alpha = Math.min(1, Math.max(0, surface.alpha));
+    fur.separateCullingPass = true;
+    return;
+  }
+
+  fur.transparencyMode = Material.MATERIAL_ALPHATEST;
+}
+
 function syncShellMaterials(shells: Mesh[], fur: FurMaterial): void {
   for (let i = 0; i < shells.length; i++) {
     const mat = shells[i].material as FurMaterial | null;
@@ -114,11 +134,8 @@ export function applyFur(
   applySurfaceToFur(fur, surface);
   if (diffuseTexture) {
     const tex = diffuseTexture as Texture;
-    if (useBakedAlphaMask) {
-      tex.hasAlpha = true;
-      fur.transparencyMode = Material.MATERIAL_ALPHATEST;
-    }
     fur.diffuseTexture = tex;
+    applyFurAlphaMask(fur, surface, tex, useBakedAlphaMask);
   }
   fur.furTexture = FurMaterial.GenerateTexture("furTexture", mesh.getScene());
   const quality = capFurQuality(mesh, settings.quality);

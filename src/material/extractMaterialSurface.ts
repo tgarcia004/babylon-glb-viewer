@@ -70,6 +70,13 @@ export function needsOpacityMerge(surface: MaterialSurface): boolean {
   return !!(surface.opacityTexture && surface.diffuseTexture instanceof Texture);
 }
 
+/** Albedo-alpha profile: cutout from base color texture A channel. */
+export function surfaceUsesAlbedoAlpha(surface: MaterialSurface | null): boolean {
+  if (!surface) return false;
+  const tex = surface.diffuseTexture;
+  return !!(tex && "hasAlpha" in tex && (tex as Texture).hasAlpha);
+}
+
 /** FurMaterial only reads diffuse alpha; merge or enable clip when glTF uses a mask. */
 export function needsFurAlphaBake(surface: MaterialSurface | null): boolean {
   if (!surface) return false;
