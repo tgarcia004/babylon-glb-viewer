@@ -20,6 +20,13 @@ import {
   furSpeedToUiPercent,
   uiPercentToFurSpeed,
 } from "../fur/configureFur";
+import {
+  applyUniversalMaterialUv,
+  collectMaterialTextures,
+  DEFAULT_TEXTURE_UV,
+  readUniversalMaterialUv,
+  type TextureUvState,
+} from "../material/materialUv";
 import { getViewerBridge } from "../viewer/viewerBridge";
 
 type InspectorRefresh = () => void;
@@ -146,6 +153,11 @@ function markMaterialDirty(mat: Material): void {
 function syncFurMaterial(mat: FurMaterial): void {
   markMaterialDirty(mat);
   getViewerBridge()?.syncFurMaterials();
+}
+
+/** Keep newly assigned maps on the same UV transform as the rest of the material. */
+function syncMaterialTextureUv(mat: Material): void {
+  applyUniversalMaterialUv(mat, readUniversalMaterialUv(mat));
 }
 
 async function paintTextureThumbFromBuffer(container: HTMLElement, tex: BaseTexture): Promise<void> {
@@ -330,6 +342,7 @@ function createFurTextureNode(
         .applyFurDensityMask(tex)
         .then(() => {
           texName.textContent = file.name;
+          syncMaterialTextureUv(mat);
           void paintTextureThumb(thumb, tex);
           syncFurMaterial(mat);
           onRestored();
@@ -344,6 +357,7 @@ function createFurTextureNode(
     }
 
     slot.setTexture(mat, tex);
+    syncMaterialTextureUv(mat);
     syncFurMaterial(mat);
     texName.textContent = file.name;
     void paintTextureThumb(thumb, tex);
@@ -432,6 +446,7 @@ function createPbrTextureNode(mat: PBRMaterial, slot: TextureSlotDef): HTMLEleme
     );
     tex.name = file.name;
     slot.setTexture(mat, tex);
+    syncMaterialTextureUv(mat);
     markMaterialDirty(mat);
     texName.textContent = file.name;
     clearBtn.disabled = false;
@@ -488,6 +503,55 @@ function createScalarControl(
 
   row.append(lbl, input, val);
   return row;
+}
+
+interface ScalarControlHandle {
+  row: HTMLElement;
+  setValue: (value: number) => void;
+}
+
+function createScalarControlHandle(
+  label: string,
+  value: number,
+  min: number,
+  max: number,
+  step: number,
+  format: (v: number) => string,
+  onChange: (v: number) => void,
+): ScalarControlHandle {
+  const row = document.createElement("div");
+  row.className = "mat-prop-row";
+
+  const lbl = document.createElement("label");
+  lbl.className = "mat-prop-label";
+  lbl.textContent = label;
+
+  const input = document.createElement("input");
+  input.type = "range";
+  input.className = "mat-prop-range";
+  input.min = String(min);
+  input.max = String(max);
+  input.step = String(step);
+  input.value = String(value);
+
+  const val = document.createElement("span");
+  val.className = "mat-prop-val";
+  val.textContent = format(value);
+
+  input.addEventListener("input", () => {
+    const v = parseFloat(input.value);
+    val.textContent = format(v);
+    onChange(v);
+  });
+
+  row.append(lbl, input, val);
+  return {
+    row,
+    setValue: (v: number) => {
+      input.value = String(v);
+      val.textContent = format(v);
+    },
+  };
 }
 
 function createPbrPropertyPanel(mat: PBRMaterial): HTMLElement {
@@ -639,6 +703,135 @@ function createFurPropertyPanel(mat: FurMaterial, onRestored: InspectorRefresh):
   return panel;
 }
 
+function createUniversalUvPanel(mat: Material, onDirty: () => void): HTMLElement {
+  const wrap = document.createElement("details");
+  wrap.className = "mat-uv-advanced";
+  wrap.open = false;
+
+  const summary = document.createElement("summary");
+  summary.className = "mat-uv-advanced-summary";
+  summary.textContent = "Advanced UV";
+  wrap.appendChild(summary);
+
+  const texCount = collectMaterialTextures(mat).length;
+  const hint = document.createElement("p");
+  hint.className = "hint mat-uv-advanced-hint";
+  hint.textContent =
+    texCount > 0
+      ? `One transform for all ${texCount} texture${texCount === 1 ? "" : "s"} on this material.`
+      : "One transform for every texture on this material (applies when maps are assigned).";
+  wrap.appendChild(hint);
+
+  const defaultRow = document.createElement("div");
+  defaultRow.className = "mat-uv-defaults-row";
+  const defaultBtn = document.createElement("button");
+  defaultBtn.type = "button";
+  defaultBtn.className = "mat-slot-btn mat-slot-btn--ghost";
+  defaultBtn.textContent = "Default UV";
+  defaultBtn.title = "Reset offset, scale, rotation, wrap, and UV set to defaults on all textures";
+  wrap.appendChild(defaultRow);
+
+  const panel = document.createElement("div");
+  panel.className = "mat-uv-panel";
+
+  const uv: TextureUvState = readUniversalMaterialUv(mat);
+
+  const applyUv = (next: Partial<TextureUvState>): void => {
+    Object.assign(uv, next);
+    applyUniversalMaterialUv(mat, uv);
+    onDirty();
+  };
+
+  const uOffsetCtrl = createScalarControlHandle("U offset", uv.uOffset, -2, 2, 0.01, (v) => v.toFixed(2), (v) => {
+    applyUv({ uOffset: v });
+  });
+  const vOffsetCtrl = createScalarControlHandle("V offset", uv.vOffset, -2, 2, 0.01, (v) => v.toFixed(2), (v) => {
+    applyUv({ vOffset: v });
+  });
+  const uScaleCtrl = createScalarControlHandle("U scale", uv.uScale, 0.01, 8, 0.01, (v) => v.toFixed(2), (v) => {
+    applyUv({ uScale: v });
+  });
+  const vScaleCtrl = createScalarControlHandle("V scale", uv.vScale, 0.01, 8, 0.01, (v) => v.toFixed(2), (v) => {
+    applyUv({ vScale: v });
+  });
+  const rotationCtrl = createScalarControlHandle(
+    "Rotation",
+    uv.wAng,
+    -Math.PI,
+    Math.PI,
+    0.01,
+    (v) => v.toFixed(2),
+    (v) => {
+      applyUv({ wAng: v });
+    },
+  );
+
+  panel.append(
+    uOffsetCtrl.row,
+    vOffsetCtrl.row,
+    uScaleCtrl.row,
+    vScaleCtrl.row,
+    rotationCtrl.row,
+  );
+
+  const wrapRow = document.createElement("div");
+  wrapRow.className = "mat-prop-row";
+  const wrapLbl = document.createElement("label");
+  wrapLbl.className = "mat-prop-label";
+  wrapLbl.textContent = "Wrap";
+  const wrapSelect = document.createElement("select");
+  wrapSelect.className = "mat-prop-select";
+  wrapSelect.innerHTML = `
+    <option value="${Texture.CLAMP_ADDRESSMODE}">Clamp</option>
+    <option value="${Texture.WRAP_ADDRESSMODE}">Repeat</option>
+    <option value="${Texture.MIRROR_ADDRESSMODE}">Mirror</option>
+  `;
+  wrapSelect.value = String(uv.wrapU);
+  wrapSelect.addEventListener("change", () => {
+    const mode = parseInt(wrapSelect.value, 10);
+    applyUv({ wrapU: mode, wrapV: mode });
+  });
+  wrapRow.append(wrapLbl, wrapSelect);
+  panel.appendChild(wrapRow);
+
+  const uvSetRow = document.createElement("div");
+  uvSetRow.className = "mat-prop-row";
+  const uvLbl = document.createElement("label");
+  uvLbl.className = "mat-prop-label";
+  uvLbl.textContent = "UV set";
+  const uvSelect = document.createElement("select");
+  uvSelect.className = "mat-prop-select";
+  uvSelect.innerHTML = `
+    <option value="0">UV0</option>
+    <option value="1">UV1</option>
+  `;
+  uvSelect.value = String(uv.coordinatesIndex);
+  uvSelect.addEventListener("change", () => {
+    applyUv({ coordinatesIndex: parseInt(uvSelect.value, 10) });
+  });
+  uvSetRow.append(uvLbl, uvSelect);
+  panel.appendChild(uvSetRow);
+
+  defaultBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    Object.assign(uv, { ...DEFAULT_TEXTURE_UV });
+    applyUniversalMaterialUv(mat, uv);
+    uOffsetCtrl.setValue(uv.uOffset);
+    vOffsetCtrl.setValue(uv.vOffset);
+    uScaleCtrl.setValue(uv.uScale);
+    vScaleCtrl.setValue(uv.vScale);
+    rotationCtrl.setValue(uv.wAng);
+    wrapSelect.value = String(uv.wrapU);
+    uvSelect.value = String(uv.coordinatesIndex);
+    onDirty();
+  });
+  defaultRow.appendChild(defaultBtn);
+
+  wrap.appendChild(panel);
+  return wrap;
+}
+
 function createMaterialGraph(
   target: MaterialEditTarget,
   showMeshLabel: boolean,
@@ -689,7 +882,12 @@ function createMaterialGraph(
     furNote.className = "hint mat-inspector-hint";
     furNote.textContent =
       "Mask texture: 0–1 grayscale for where/how thick. Fur length sets overall shell stack height.";
-    propsWrap.append(propsTitle, furNote, createFurPropertyPanel(material, refreshFurUi));
+    propsWrap.append(
+      propsTitle,
+      furNote,
+      createFurPropertyPanel(material, refreshFurUi),
+      createUniversalUvPanel(material, () => syncFurMaterial(material)),
+    );
     block.append(graphShell, propsWrap);
   } else if (isEditablePbr(material)) {
     const textureNodes = PBR_TEXTURE_SLOTS.map((slot) => createPbrTextureNode(material, slot));
@@ -700,7 +898,11 @@ function createMaterialGraph(
     const propsTitle = document.createElement("p");
     propsTitle.className = "mat-graph-slots-title";
     propsTitle.textContent = "Material properties";
-    propsWrap.append(propsTitle, createPbrPropertyPanel(material));
+    propsWrap.append(
+      propsTitle,
+      createPbrPropertyPanel(material),
+      createUniversalUvPanel(material, () => markMaterialDirty(material)),
+    );
     block.append(graphShell, propsWrap);
   } else {
     const note = document.createElement("p");

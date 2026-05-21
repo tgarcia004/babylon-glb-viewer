@@ -32,6 +32,11 @@ import {
 } from "../fur/configureFur";
 import { applyFurDensityMask as applyFurDensityMaskToMaterial } from "../fur/furDensityMask";
 import {
+  captureFurEditorSnapshot,
+  restoreFurEditorSnapshot,
+  type FurEditorSnapshot,
+} from "../fur/furEditorSnapshot";
+import {
   canRestoreFurSlot,
   restoreFurProperties,
   restoreFurSlot,
@@ -224,6 +229,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
 
   let fur: FurInstance | null = null;
   let furInspectorDefaults: FurInspectorDefaults | null = null;
+  let furEditorSnapshot: FurEditorSnapshot | null = null;
   let furDensityMaskTexture: BaseTexture | null = null;
   let hullSurface: MaterialSurface | null = null;
   let rebuildGeneration = 0;
@@ -412,10 +418,14 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
 
   async function rebuildFur(): Promise<void> {
     const generation = ++rebuildGeneration;
-    fur?.dispose();
-    fur = null;
-    furInspectorDefaults = null;
-    furDensityMaskTexture = null;
+    if (fur) {
+      furEditorSnapshot = captureFurEditorSnapshot(fur.material);
+      if (fur.material.heightTexture) {
+        furDensityMaskTexture = fur.material.heightTexture;
+      }
+      fur.dispose({ preserveTextures: true });
+      fur = null;
+    }
 
     if (!hullMesh) {
       if (statsEl) statsEl.textContent = "";
@@ -472,23 +482,36 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     syncImportedMeshVisibility();
 
     if (generation !== rebuildGeneration) {
-      fur.dispose();
+      fur.dispose({ preserveTextures: true });
       fur = null;
       return;
     }
 
-    const autoMask = furDensityMaskTexture ?? hullPbrMaterial?.bumpTexture ?? null;
-    if (autoMask) {
-      await applyFurDensityMaskToMaterial(scene, fur.material, fur.shells, autoMask, {
-        shellLift: live.settings.shellLift,
-        maskStrength: 1,
-      });
+    if (furEditorSnapshot) {
+      restoreFurEditorSnapshot(fur.material, fur.shells, furEditorSnapshot);
+      applyLiveFurSettings();
+      live.settings.furAngle = fur.material.furAngle;
+      live.settings.furDensity = fur.material.furDensity;
+      live.settings.furSpeed = clampFurSpeed(fur.material.furSpeed);
+      live.settings.furGravity = fur.material.furGravity.clone();
+      syncPreviewFurSliders();
+    } else {
+      const autoMask = furDensityMaskTexture ?? hullPbrMaterial?.bumpTexture ?? null;
+      if (autoMask) {
+        furDensityMaskTexture = autoMask;
+        await applyFurDensityMaskToMaterial(scene, fur.material, fur.shells, autoMask, {
+          shellLift: live.settings.shellLift,
+          maskStrength: 1,
+        });
+      }
     }
 
-    furInspectorDefaults = snapshotFurInspectorDefaults(
-      fur.material,
-      fur.material.heightTexture ?? null,
-    );
+    if (!furInspectorDefaults) {
+      furInspectorDefaults = snapshotFurInspectorDefaults(
+        fur.material,
+        fur.material.heightTexture ?? null,
+      );
+    }
 
     const shellNote = importedLooksLikeBlenderShells ? " · hull only (multi-mesh GLB)" : "";
     if (statsEl) {
@@ -687,7 +710,8 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       fur?.dispose();
       fur = null;
       furInspectorDefaults = null;
-    furDensityMaskTexture = null;
+      furEditorSnapshot = null;
+      furDensityMaskTexture = null;
       hullPbrMaterial = null;
       hullSurface = null;
       furDiffuseCache.clear();

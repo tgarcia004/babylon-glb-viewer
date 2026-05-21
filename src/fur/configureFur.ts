@@ -66,12 +66,17 @@ export interface FurSettings {
   quality: number;
 }
 
+export interface FurDisposeOptions {
+  /** Keep diffuse / mask / fur noise textures alive (e.g. fur off → on). */
+  preserveTextures?: boolean;
+}
+
 export interface FurInstance {
   shells: Mesh[];
   material: FurMaterial;
   triangleCount: number;
   update(settings: Partial<FurSettings>): void;
-  dispose(): void;
+  dispose(options?: FurDisposeOptions): void;
 }
 
 /** Largest half-extent of the mesh in world space (for scaling shell offsets). */
@@ -205,7 +210,8 @@ export function applyFur(
     material: fur,
     triangleCount,
     update: syncShells,
-    dispose() {
+    dispose(options?: FurDisposeOptions) {
+      const preserveTextures = options?.preserveTextures ?? false;
       mesh.material = originalMaterial;
       const noiseTexture = fur.furTexture;
 
@@ -213,19 +219,23 @@ export function applyFur(
         const shellMat = shells[i].material as FurMaterial | null;
         if (!shellMat) continue;
         shellMat.diffuseTexture = null as unknown as Texture;
+        shellMat.heightTexture = null as unknown as FurMaterial["heightTexture"];
         shellMat.furTexture = null as unknown as ReturnType<typeof FurMaterial.GenerateTexture>;
       }
       fur.diffuseTexture = null as unknown as Texture;
+      fur.heightTexture = null as unknown as FurMaterial["heightTexture"];
       fur.furTexture = null as unknown as ReturnType<typeof FurMaterial.GenerateTexture>;
       (fur as unknown as { _meshes: unknown })._meshes = [];
 
       for (let i = 1; i < shells.length; i++) {
         const sh = shells[i];
-        sh.material?.dispose(false, false);
-        sh.dispose(false, false);
+        sh.material?.dispose(false);
+        sh.dispose(false);
       }
       fur.dispose(false);
-      noiseTexture?.dispose();
+      if (!preserveTextures) {
+        noiseTexture?.dispose();
+      }
     },
   };
 }
