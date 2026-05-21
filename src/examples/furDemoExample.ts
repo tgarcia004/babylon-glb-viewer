@@ -3,14 +3,17 @@
  */
 
 import "@babylonjs/loaders/glTF";
+import "@babylonjs/core/Layers/effectLayerSceneComponent";
 
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { HighlightLayer } from "@babylonjs/core/Layers/highlightLayer";
+import type { Node } from "@babylonjs/core/node";
 import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { ImportMeshAsync } from "@babylonjs/core/Loading/sceneLoader";
 import type { BaseTexture } from "@babylonjs/core/Materials/Textures/baseTexture";
 import { Material } from "@babylonjs/core/Materials/material";
 import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
@@ -43,12 +46,15 @@ import {
   formatImportStatus,
   summarizeImport,
 } from "../model/collectMeshes";
+import type { AssetContainer } from "@babylonjs/core/assetContainer";
+import { importModelFile } from "../model/importModelFile";
 import {
   createStudioLightRig,
   STUDIO_LIGHT_DEFAULTS,
   type StudioLightingState,
 } from "../lighting/studioLights";
 import { wireStudioLightingPanel } from "../lighting/wireStudioPanel";
+import { registerModelFileHandlers } from "../ui/modelFileDrop";
 import { wireModelUpload } from "../ui/wireModelUpload";
 import { initViewportEmptyState } from "../ui/viewportEmptyState";
 import {
@@ -60,6 +66,8 @@ import {
 import { registerThemeScene, type ViewerTheme } from "../ui/theme";
 import { furSettingsFromSnapshot, type SceneSnapshotV1 } from "../scene/sceneSnapshot";
 import { wireSceneSnapshotPanel } from "../ui/wireSceneSnapshot";
+import { initObjectHierarchyPanel, notifyHierarchySelection } from "../ui/objectHierarchyPanel";
+import { emitViewerImportState, registerViewerBridge } from "../viewer/viewerBridge";
 import {
   refreshViewportPerfIndicator,
   registerPerfMetricsProvider,
@@ -154,6 +162,11 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
   const scene = new Scene(engine);
   registerThemeScene(scene);
 
+  const highlightLayer = new HighlightLayer("hierarchyHighlight", scene, {
+    blurHorizontalSize: 0.35,
+    blurVerticalSize: 0.35,
+  });
+
   const camera = new ArcRotateCamera("cam", -1.1, 1.05, 5, new Vector3(0, 0.45, 0), scene);
   configureViewerCamera(camera, canvas);
 
@@ -172,6 +185,8 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
   let pbrProfileId: PbrMaterialProfileId = "furShell";
   let importedMeshes: AbstractMesh[] = [];
   let importRoots: AbstractMesh[] = [];
+  let importContainer: AssetContainer | null = null;
+  let loadGeneration = 0;
   let importedLooksLikeBlenderShells = false;
   let importedShellStack = false;
   let lastImportSummary: ReturnType<typeof summarizeImport> | null = null;
@@ -198,6 +213,26 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
   const statsEl = panel?.querySelector<HTMLElement>("#fur-stats");
   const fileNameEl = panel?.querySelector<HTMLElement>("#model-file-name");
   const furEnabledInput = panel?.querySelector<HTMLInputElement>("#fur-enabled");
+  const viewportEmpty = initViewportEmptyState();
+  viewportEmpty.setVisible(true);
+
+  const onRejectedModel = (file: File): void => {
+    const msg = `Not a GLB/glTF file: ${file.name}`;
+    viewportEmpty.setStatus(msg);
+    if (fileNameEl) fileNameEl.textContent = msg;
+    if (statusEl) statusEl.textContent = msg;
+  };
+
+  const onModelFile = (file: File): void => {
+    const label = file.name || "model";
+    viewportEmpty.setStatus(`Loading ${label}…`);
+    if (fileNameEl) fileNameEl.textContent = `Loading ${label}…`;
+    if (statusEl) statusEl.textContent = "Loading model…";
+    void loadGlb(file);
+  };
+
+  registerModelFileHandlers({ onFile: onModelFile, onRejected: onRejectedModel });
+  wireModelUpload(onModelFile, onRejectedModel);
 
   function currentPerfSnapshot() {
     let triangleCount = 0;
@@ -446,63 +481,128 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     }
   }
 
+  const pushImportState = (): void => {
+    emitViewerImportState({
+      roots: importRoots.filter((m) => !m.isDisposed()),
+      fileName: currentModelFileName,
+    });
+  };
+
+  const findNodeByUniqueId = (uniqueId: number): Node | null => {
+    return scene.getMeshByUniqueId(uniqueId) ?? scene.getTransformNodeByUniqueId(uniqueId);
+  };
+
+  const clearHierarchySelection = (): void => {
+    highlightLayer.removeAllMeshes();
+    notifyHierarchySelection(null);
+  };
+
+  const selectByUniqueId = (uniqueId: number): void => {
+    clearHierarchySelection();
+    const node = findNodeByUniqueId(uniqueId);
+    if (!node) return;
+    if (node instanceof Mesh && node.getTotalVertices() > 0) {
+      highlightLayer.addMesh(node, Color3.FromHexString("#E8A84A"));
+      frameMeshes(camera, [node]);
+      refreshCameraConstraints();
+    }
+    notifyHierarchySelection(uniqueId);
+  };
+
+  registerViewerBridge({
+    getImportState: () => ({
+      roots: importRoots.filter((m) => !m.isDisposed()),
+      fileName: currentModelFileName,
+    }),
+    findNodeByUniqueId,
+    selectByUniqueId,
+    clearSelection: clearHierarchySelection,
+  });
+
+  initObjectHierarchyPanel();
+
   async function loadGlb(file: File): Promise<void> {
-    if (!file.size) return;
-    const ext = file.name.toLowerCase().endsWith(".gltf") ? ".gltf" : ".glb";
+    if (!file.size) {
+      const msg = "File is empty.";
+      viewportEmpty.setStatus(msg);
+      if (statusEl) statusEl.textContent = msg;
+      return;
+    }
+
+    const gen = ++loadGeneration;
     if (statusEl) statusEl.textContent = "Loading model…";
 
-    const imported = await ImportMeshAsync(file, scene, {
-      pluginExtension: ext,
-      name: file.name,
-      pluginOptions: { gltf: { compileMaterials: true, skipMaterials: false, useSRGBBuffers: true } },
-    });
+    try {
+      const imported = await importModelFile(scene, file);
+      if (gen !== loadGeneration) {
+        imported.container.dispose();
+        return;
+      }
 
-    fur?.dispose();
-    fur = null;
-    hullPbrMaterial = null;
-    hullSurface = null;
-    furDiffuseCache.clear();
-    for (const m of importRoots) {
-      if (!m.isDisposed()) m.dispose(false, true);
+      fur?.dispose();
+      fur = null;
+      hullPbrMaterial = null;
+      hullSurface = null;
+      furDiffuseCache.clear();
+      importContainer?.dispose();
+      importContainer = imported.container;
+      importRoots = imported.roots.slice();
+      const rootsForCollect =
+        importContainer.meshes.length > 0 ? importContainer.meshes.slice() : importRoots;
+      const renderMeshes = collectRenderableMeshes(rootsForCollect);
+      importedMeshes = renderMeshes;
+      lastImportSummary = summarizeImport(renderMeshes);
+
+      if (renderMeshes.length === 0) {
+        const msg = "No mesh geometry found in file.";
+        viewportEmpty.setVisible(true);
+        viewportEmpty.setStatus(msg);
+        if (statusEl) statusEl.textContent = msg;
+        if (fileNameEl) fileNameEl.textContent = msg;
+        return;
+      }
+
+      hullMesh = pickPrimaryHullMesh(renderMeshes);
+      viewportEmpty.setVisible(false);
+      viewportEmpty.resetStatus();
+      importedLooksLikeBlenderShells = renderMeshes.length > BLENDER_SHELL_MESH_THRESHOLD;
+      importedShellStack = lastImportSummary.looksLikeShellStack;
+
+      normalizeImportedGltfMaterials(renderMeshes, {
+        shellStack: importedShellStack,
+        profile: pbrProfileId,
+      });
+      hullPbrMaterial =
+        hullMesh?.material instanceof PBRMaterial ? hullMesh.material : null;
+      hullSurface = hullPbrMaterial
+        ? extractMaterialSurfaceFromMesh(hullPbrMaterial)
+        : null;
+      syncPbrProfileUi();
+
+      live.enabled = false;
+      if (furEnabledInput) furEnabledInput.checked = false;
+
+      currentModelFileName = file.name;
+      if (fileNameEl) fileNameEl.textContent = file.name;
+      enableAllImportedMeshes();
+      await rebuildFur();
+
+      if (statusEl && lastImportSummary) {
+        statusEl.textContent = formatImportStatus(lastImportSummary, file.name);
+      }
+      frameMeshes(camera, meshesForCameraFrame());
+      refreshViewportPerfIndicator();
+      pushImportState();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to load model.";
+      viewportEmpty.setVisible(true);
+      viewportEmpty.setStatus(`Load failed: ${msg}`);
+      if (statusEl) statusEl.textContent = msg;
+      if (fileNameEl) fileNameEl.textContent = `Load failed: ${msg}`;
+      // eslint-disable-next-line no-console
+      console.error("GLB load failed:", err);
     }
-    importRoots = imported.meshes.slice();
-    const renderMeshes = collectRenderableMeshes(importRoots);
-    importedMeshes = renderMeshes;
-    lastImportSummary = summarizeImport(renderMeshes);
-
-    hullMesh = pickPrimaryHullMesh(renderMeshes);
-    viewportEmpty.setVisible(false);
-    importedLooksLikeBlenderShells = renderMeshes.length > BLENDER_SHELL_MESH_THRESHOLD;
-    importedShellStack = lastImportSummary.looksLikeShellStack;
-
-    normalizeImportedGltfMaterials(renderMeshes, {
-      shellStack: importedShellStack,
-      profile: pbrProfileId,
-    });
-    hullPbrMaterial =
-      hullMesh?.material instanceof PBRMaterial ? hullMesh.material : null;
-    hullSurface = hullPbrMaterial
-      ? extractMaterialSurfaceFromMesh(hullPbrMaterial)
-      : null;
-    syncPbrProfileUi();
-
-    live.enabled = false;
-    if (furEnabledInput) furEnabledInput.checked = false;
-
-    currentModelFileName = file.name;
-    if (fileNameEl) fileNameEl.textContent = file.name;
-    enableAllImportedMeshes();
-    await rebuildFur();
-
-    if (statusEl && lastImportSummary) {
-      statusEl.textContent = formatImportStatus(lastImportSummary, file.name);
-    }
-    frameMeshes(camera, meshesForCameraFrame());
-    refreshViewportPerfIndicator();
   }
-
-  const viewportEmpty = initViewportEmptyState((file) => void loadGlb(file));
-  viewportEmpty.setVisible(true);
 
   if (panel) {
     wireStudioLightingPanel(panel, scene, lightRig, lighting);
@@ -555,8 +655,6 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       refreshPbrProfile();
     });
     syncPbrProfileUi();
-
-    wireModelUpload(panel, (file) => void loadGlb(file));
 
     wireSceneSnapshotPanel(panel, scene, lightRig, lighting, camera, {
       getSource: () => ({

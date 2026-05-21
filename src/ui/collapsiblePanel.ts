@@ -29,9 +29,7 @@ export function initCollapsiblePanel(): void {
       section.classList.toggle("is-open", open);
       toggle.setAttribute("aria-expanded", open ? "true" : "false");
       body.setAttribute("aria-hidden", open ? "false" : "true");
-      if (inner) {
-        inner.toggleAttribute("inert", !open);
-      }
+      // Do not use inert — it blocks file inputs and programmatic input.click() when collapsed.
     };
 
     apply();

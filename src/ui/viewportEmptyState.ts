@@ -1,28 +1,36 @@
-function isModelFile(file: File): boolean {
+export function isModelFile(file: File): boolean {
   const name = file.name.toLowerCase();
-  return (
-    name.endsWith(".glb") ||
-    name.endsWith(".gltf") ||
-    file.type === "model/gltf-binary" ||
-    file.type === "model/gltf+json"
-  );
-}
-
-function preventFileDragDefaults(e: DragEvent): void {
-  e.preventDefault();
-  e.stopPropagation();
+  if (name.endsWith(".glb") || name.endsWith(".gltf")) {
+    return true;
+  }
+  if (file.type === "model/gltf-binary" || file.type === "model/gltf+json") {
+    return true;
+  }
+  if (file.type === "application/octet-stream" && (name.endsWith(".glb") || name.endsWith(".gltf"))) {
+    return true;
+  }
+  // Windows: dropped path may arrive without extension in the name field.
+  if (file.size > 0 && !name.includes(".")) {
+    return true;
+  }
+  return false;
 }
 
 export interface ViewportEmptyState {
   setVisible: (visible: boolean) => void;
+  setStatus: (message: string) => void;
+  resetStatus: () => void;
 }
 
-/** Centered viewport prompt when no model is loaded; accepts GLB/glTF drops. */
-export function initViewportEmptyState(onFile: (file: File) => void): ViewportEmptyState {
+/** Centered viewport prompt when no model is loaded. File drops use modelFileDrop.ts. */
+export function initViewportEmptyState(): ViewportEmptyState {
   const root = document.getElementById("viewport-empty");
-  const viewport = document.getElementById("viewport");
   const browseBtn = root?.querySelector<HTMLButtonElement>(".viewport-empty-browse");
+  const titleEl = root?.querySelector<HTMLElement>(".viewport-empty-title");
+  const hintEl = root?.querySelector<HTMLElement>(".viewport-empty-hint");
   const fileInput = document.querySelector<HTMLInputElement>("#model-upload");
+  const defaultTitle = titleEl?.textContent ?? "Drop your model here";
+  const defaultHint = hintEl?.textContent ?? "GLB or glTF · drag onto the view or use the panel";
 
   const setVisible = (visible: boolean) => {
     if (!root) return;
@@ -30,13 +38,13 @@ export function initViewportEmptyState(onFile: (file: File) => void): ViewportEm
     root.setAttribute("aria-hidden", visible ? "false" : "true");
   };
 
-  const setDragover = (active: boolean) => {
-    root?.classList.toggle("is-dragover", active);
-    viewport?.classList.toggle("is-model-dragover", active);
+  const setStatus = (message: string) => {
+    if (titleEl) titleEl.textContent = message;
   };
 
-  const handleFile = (file: File | undefined) => {
-    if (file && isModelFile(file)) void onFile(file);
+  const resetStatus = () => {
+    if (titleEl) titleEl.textContent = defaultTitle;
+    if (hintEl) hintEl.textContent = defaultHint;
   };
 
   browseBtn?.addEventListener("click", (e) => {
@@ -45,40 +53,5 @@ export function initViewportEmptyState(onFile: (file: File) => void): ViewportEm
     fileInput?.click();
   });
 
-  const bindDropTarget = (el: HTMLElement) => {
-    el.addEventListener("dragenter", (e) => {
-      if (!e.dataTransfer?.types.includes("Files")) return;
-      preventFileDragDefaults(e);
-      setDragover(true);
-    });
-
-    el.addEventListener("dragover", (e) => {
-      if (!e.dataTransfer?.types.includes("Files")) return;
-      preventFileDragDefaults(e);
-      e.dataTransfer.dropEffect = "copy";
-      setDragover(true);
-    });
-
-    el.addEventListener("dragleave", (e) => {
-      const related = e.relatedTarget;
-      if (related && el.contains(related as Node)) return;
-      if (viewport && related && viewport.contains(related as Node) && el !== viewport) return;
-      setDragover(false);
-    });
-
-    el.addEventListener("drop", (e) => {
-      if (!e.dataTransfer?.types.includes("Files")) return;
-      preventFileDragDefaults(e);
-      setDragover(false);
-      handleFile(e.dataTransfer.files?.[0]);
-    });
-  };
-
-  if (root) bindDropTarget(root);
-  if (viewport) bindDropTarget(viewport);
-
-  const canvas = document.getElementById("renderCanvas");
-  if (canvas instanceof HTMLCanvasElement) bindDropTarget(canvas);
-
-  return { setVisible };
+  return { setVisible, setStatus, resetStatus };
 }

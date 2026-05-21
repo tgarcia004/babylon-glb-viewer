@@ -1,87 +1,21 @@
-function isModelFile(file: File): boolean {
-  const name = file.name.toLowerCase();
-  return (
-    name.endsWith(".glb") ||
-    name.endsWith(".gltf") ||
-    file.type === "model/gltf-binary" ||
-    file.type === "model/gltf+json"
-  );
-}
+import { isModelFile } from "./viewportEmptyState";
 
-function preventFileDragDefaults(e: DragEvent): void {
-  e.preventDefault();
-  e.stopPropagation();
-}
+/** File picker for the model upload zone (drops use modelFileDrop.ts). */
+export function wireModelUpload(
+  onFile: (file: File) => void,
+  onRejected?: (file: File) => void,
+): void {
+  const input = document.querySelector<HTMLInputElement>("#model-upload");
+  if (!input) return;
 
-/** File picker + drag-and-drop for the model upload zone. */
-export function wireModelUpload(panel: HTMLElement, onFile: (file: File) => void): void {
-  const zone = panel.querySelector<HTMLElement>(".upload-zone");
-  const input = panel.querySelector<HTMLInputElement>("#model-upload");
-
-  input?.addEventListener("change", () => {
+  input.addEventListener("change", () => {
     const file = input.files?.[0];
-    if (file) void onFile(file);
     input.value = "";
-  });
-
-  if (!zone) return;
-
-  zone.addEventListener("dragenter", (e) => {
-    preventFileDragDefaults(e);
-    zone.classList.add("is-dragover");
-  });
-
-  zone.addEventListener("dragover", (e) => {
-    preventFileDragDefaults(e);
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-    zone.classList.add("is-dragover");
-  });
-
-  zone.addEventListener("dragleave", (e) => {
-    preventFileDragDefaults(e);
-    const related = e.relatedTarget;
-    if (!related || !zone.contains(related as Node)) {
-      zone.classList.remove("is-dragover");
+    if (!file) return;
+    if (isModelFile(file)) {
+      onFile(file);
+    } else {
+      onRejected?.(file);
     }
   });
-
-  zone.addEventListener("drop", (e) => {
-    preventFileDragDefaults(e);
-    zone.classList.remove("is-dragover");
-    const file = e.dataTransfer?.files?.[0];
-    if (file && isModelFile(file)) void onFile(file);
-  });
-
-  const layout = document.getElementById("layout");
-  if (!layout) return;
-
-  layout.addEventListener("dragover", (e) => {
-    if (e.dataTransfer?.types.includes("Files")) preventFileDragDefaults(e);
-  });
-
-  const viewport = document.getElementById("viewport");
-
-  layout.addEventListener("drop", (e) => {
-    if (!e.dataTransfer?.types.includes("Files")) return;
-    const target = e.target;
-    if (target instanceof Node && zone.contains(target)) return;
-    preventFileDragDefaults(e);
-    const file = e.dataTransfer.files?.[0];
-    if (file && isModelFile(file)) void onFile(file);
-  });
-
-  const canvas = document.getElementById("renderCanvas");
-  if (canvas instanceof HTMLElement) {
-    canvas.addEventListener("dragover", (e) => {
-      if (!e.dataTransfer?.types.includes("Files")) return;
-      preventFileDragDefaults(e);
-      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-    });
-    canvas.addEventListener("drop", (e) => {
-      if (!e.dataTransfer?.types.includes("Files")) return;
-      preventFileDragDefaults(e);
-      const file = e.dataTransfer.files?.[0];
-      if (file && isModelFile(file)) void onFile(file);
-    });
-  }
 }

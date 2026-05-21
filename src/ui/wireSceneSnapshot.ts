@@ -192,11 +192,14 @@ export function wireSceneSnapshotPanel(
       }
     });
 
-    importBtn.addEventListener("drop", (e) => {
+    const onImportDrop = (e: DragEvent): void => {
       preventFileDragDefaults(e);
       importBtn.classList.remove("is-dragover");
       const file = e.dataTransfer?.files?.[0];
       if (file) applyImportedFile(file);
-    });
+    };
+
+    // Capture phase so this runs after window capture returns without stopping propagation.
+    importBtn.addEventListener("drop", onImportDrop, true);
   }
 }

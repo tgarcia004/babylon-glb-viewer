@@ -12,7 +12,7 @@
     />
   </head>
   <body>
-    <div id="layout" data-viewport-focus="studio">
+    <div id="layout" data-viewport-focus="studio" data-workspace="preview">
       <main id="viewport">
         <canvas id="renderCanvas"></canvas>
         <div
@@ -128,6 +128,17 @@
       </main>
 
       <aside id="fur-panel" aria-label="Inspector">
+        <div
+          id="panel-resize-handle"
+          class="panel-resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize inspector panel"
+          aria-valuemin="280"
+          aria-valuemax="640"
+          tabindex="0"
+          title="Drag to resize panel"
+        ></div>
         <header class="panel-header">
           <div class="panel-header-top">
             <div class="panel-brand">
@@ -146,8 +157,36 @@
               </button>
             </div>
           </div>
+          <nav class="workspace-tabs" role="tablist" aria-label="Workspace">
+            <button
+              type="button"
+              class="workspace-tab is-active"
+              role="tab"
+              data-workspace="preview"
+              aria-selected="true"
+            >
+              Preview
+            </button>
+            <button
+              type="button"
+              class="workspace-tab"
+              role="tab"
+              data-workspace="edit-object"
+              aria-selected="false"
+            >
+              Edit Object
+            </button>
+          </nav>
         </header>
 
+        <input
+          id="model-upload"
+          type="file"
+          accept=".glb,.gltf,model/gltf-binary,model/gltf+json"
+          hidden
+        />
+
+        <div id="workspace-preview" class="workspace-page is-active" data-workspace-page="preview">
         <div class="panel-scroll">
           <section class="panel-section collapsible" data-section="model" data-default-open="closed">
             <button type="button" class="section-toggle" aria-expanded="false">
@@ -159,11 +198,10 @@
             </button>
             <div class="section-body">
               <div class="section-body-inner">
-                <label class="upload-zone">
+                <label class="upload-zone" for="model-upload">
                   <span class="upload-icon" aria-hidden="true">↑</span>
                   <span class="upload-label">Upload GLB or glTF</span>
                   <span class="upload-hint">Drag & drop or click to browse</span>
-                  <input id="model-upload" type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" />
                 </label>
                 <div id="model-file-name"></div>
               </div>
@@ -392,6 +430,32 @@
               </div>
             </div>
           </section>
+        </div>
+        </div>
+
+        <div
+          id="workspace-edit-object"
+          class="workspace-page"
+          data-workspace-page="edit-object"
+          hidden
+        >
+          <div class="edit-object-page">
+            <div class="edit-object-head">
+              <p class="edit-object-title">Object hierarchy</p>
+              <p id="object-hierarchy-file" class="edit-object-file"></p>
+              <p id="object-hierarchy-summary" class="hint edit-object-summary"></p>
+            </div>
+            <div class="hierarchy-toolbar">
+              <button type="button" id="hierarchy-expand-all" class="hierarchy-tool-btn">Expand all</button>
+              <button type="button" id="hierarchy-collapse-all" class="hierarchy-tool-btn">Collapse all</button>
+            </div>
+            <div id="object-hierarchy-empty" class="hierarchy-empty">
+              <p class="hierarchy-empty-title">No model loaded</p>
+              <p class="hint">Load a GLB in the <strong>Preview</strong> workspace, then return here to browse the scene tree.</p>
+            </div>
+            <div id="object-hierarchy-tree" class="hierarchy-tree-scroll" role="tree" aria-label="GLB hierarchy"></div>
+            <div id="object-hierarchy-detail" class="hierarchy-detail"></div>
+          </div>
         </div>
       </aside>
     </div>
