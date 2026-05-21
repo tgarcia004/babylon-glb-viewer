@@ -30,6 +30,7 @@ import {
   type FurInstance,
   type FurSettings,
 } from "../fur/configureFur";
+import { applyFurDensityMask as applyFurDensityMaskToMaterial } from "../fur/furDensityMask";
 import {
   canRestoreFurSlot,
   restoreFurProperties,
@@ -223,6 +224,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
 
   let fur: FurInstance | null = null;
   let furInspectorDefaults: FurInspectorDefaults | null = null;
+  let furDensityMaskTexture: BaseTexture | null = null;
   let hullSurface: MaterialSurface | null = null;
   let rebuildGeneration = 0;
   const furDiffuseCache = new Map<string, BaseTexture>();
@@ -315,10 +317,21 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
   function syncPreviewFurSliders(): void {
     if (!panel) return;
     const s = live.settings;
+    setRange(panel, "fur-length", "fur-length-val", s.shellLift, (v) => v.toFixed(3));
+    setRange(panel, "fur-spacing", "fur-spacing-val", s.stackDepth, (v) => v.toFixed(2));
     setRange(panel, "fur-speed", "fur-speed-val", s.furSpeed, (v) => String(Math.round(v)));
     setRange(panel, "fur-angle", "fur-angle-val", s.furAngle, (v) => v.toFixed(2));
     setRange(panel, "fur-density", "fur-density-val", s.furDensity, (v) => String(Math.round(v)));
     setRange(panel, "fur-gravity-y", "fur-gravity-y-val", s.furGravity.y, (v) => v.toFixed(2));
+  }
+
+  async function refreshFurMaskLength(): Promise<void> {
+    if (!fur?.material.heightTexture) return;
+    await applyFurDensityMaskToMaterial(scene, fur.material, fur.shells, fur.material.heightTexture, {
+      shellLift: live.settings.shellLift,
+      maskStrength: 1,
+      rebakeNoise: false,
+    });
   }
 
   function meshesForCameraFrame(): AbstractMesh[] {
@@ -402,6 +415,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     fur?.dispose();
     fur = null;
     furInspectorDefaults = null;
+    furDensityMaskTexture = null;
 
     if (!hullMesh) {
       if (statsEl) statsEl.textContent = "";
@@ -463,9 +477,17 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       return;
     }
 
+    const autoMask = furDensityMaskTexture ?? hullPbrMaterial?.bumpTexture ?? null;
+    if (autoMask) {
+      await applyFurDensityMaskToMaterial(scene, fur.material, fur.shells, autoMask, {
+        shellLift: live.settings.shellLift,
+        maskStrength: 1,
+      });
+    }
+
     furInspectorDefaults = snapshotFurInspectorDefaults(
       fur.material,
-      hullPbrMaterial?.bumpTexture ?? null,
+      fur.material.heightTexture ?? null,
     );
 
     const shellNote = importedLooksLikeBlenderShells ? " · hull only (multi-mesh GLB)" : "";
@@ -587,9 +609,49 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     },
     getFurInspectorDefaults: () => furInspectorDefaults,
     canRestoreFurSlot: (slotId: FurInspectorSlotId) => canRestoreFurSlot(furInspectorDefaults, slotId),
+    getFurDensityMask: () => fur?.material?.heightTexture ?? null,
+    applyFurDensityMask: async (mask) => {
+      if (!fur || !hullMesh) return;
+      furDensityMaskTexture = mask;
+      await applyFurDensityMaskToMaterial(scene, fur.material, fur.shells, mask, {
+        shellLift: live.settings.shellLift,
+        maskStrength: 1,
+      });
+    },
+    clearFurDensityMask: async () => {
+      if (!fur) return;
+      furDensityMaskTexture = null;
+      await applyFurDensityMaskToMaterial(scene, fur.material, fur.shells, null, {
+        shellLift: live.settings.shellLift,
+        rebakeNoise: true,
+      });
+    },
+    getFurShellLift: () => live.settings.shellLift,
+    setFurShellLift: (value) => {
+      live.settings.shellLift = value;
+      applyLiveFurSettings();
+      void refreshFurMaskLength();
+      syncPreviewFurSliders();
+    },
+    getFurStackDepth: () => live.settings.stackDepth,
+    setFurStackDepth: (value) => {
+      live.settings.stackDepth = value;
+      applyLiveFurSettings();
+      syncPreviewFurSliders();
+    },
     restoreFurInspectorSlot: (slotId: FurInspectorSlotId) => {
       if (!fur || !furInspectorDefaults) return false;
-      return restoreFurSlot(scene, fur.material, fur.shells, furInspectorDefaults, slotId);
+      if (slotId === "fur-mask") {
+        furDensityMaskTexture = furInspectorDefaults.heightTexture;
+      }
+      return restoreFurSlot(
+        scene,
+        fur.material,
+        fur.shells,
+        furInspectorDefaults,
+        slotId,
+        live.settings.shellLift,
+      );
     },
     restoreFurInspectorProperties: () => {
       if (!fur || !furInspectorDefaults) return;
@@ -624,6 +686,8 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
 
       fur?.dispose();
       fur = null;
+      furInspectorDefaults = null;
+    furDensityMaskTexture = null;
       hullPbrMaterial = null;
       hullSurface = null;
       furDiffuseCache.clear();

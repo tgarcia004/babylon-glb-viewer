@@ -106,22 +106,25 @@ function opacitySample(data: Uint8Array, i: number, fromRgb: boolean): number {
   return data[o + 3];
 }
 
-/**
- * Merge opacity into albedo alpha for fur. Runs at most once per material (caller caches).
- */
-async function bakeAlbedoPixels(
+/** Merge a mask texture into the albedo alpha channel (for fur silhouette cutouts). */
+export async function mergeOpacityIntoDiffuse(
   scene: Scene,
-  name: string,
   albedo: BaseTexture,
-  surface: MaterialSurface,
-  opacityTex: BaseTexture | null,
+  mask: BaseTexture,
+  name: string,
+  options?: { sampleRgb?: boolean },
 ): Promise<RawTexture> {
   const src = albedo.getSize();
   const { w, h } = mergeTargetSize(src.width, src.height);
   const albData = await GetTextureDataAsync(albedo, w, h);
-  const opData = opacityTex ? await GetTextureDataAsync(opacityTex, w, h) : null;
-  const fromRgb =
-    opacityTex instanceof Texture && opacityTex.getAlphaFromRGB;
+  const maskData = await GetTextureDataAsync(mask, w, h);
+  let fromRgb = true;
+  if (options?.sampleRgb !== undefined) {
+    fromRgb = options.sampleRgb;
+  } else if (mask instanceof Texture) {
+    fromRgb = mask.getAlphaFromRGB || !mask.hasAlpha;
+  }
+
   const pixels = new Uint8Array(w * h * 4);
   for (let i = 0; i < w * h; i++) {
     const o = i * 4;
@@ -129,10 +132,8 @@ async function bakeAlbedoPixels(
     pixels[o + 1] = albData[o + 1];
     pixels[o + 2] = albData[o + 2];
     let alpha = albData[o + 3];
-    if (opData) {
-      const mask = opacitySample(opData, i, fromRgb);
-      alpha = Math.round((mask / 255) * (alpha / 255) * 255);
-    }
+    const maskValue = opacitySample(maskData, i, fromRgb);
+    alpha = Math.round((maskValue / 255) * (alpha / 255) * 255);
     pixels[o + 3] = alpha;
   }
 
@@ -148,6 +149,25 @@ async function bakeAlbedoPixels(
   );
   merged.name = name;
   merged.hasAlpha = true;
+  return merged;
+}
+
+/**
+ * Merge opacity into albedo alpha for fur. Runs at most once per material (caller caches).
+ */
+async function bakeAlbedoPixels(
+  scene: Scene,
+  name: string,
+  albedo: BaseTexture,
+  surface: MaterialSurface,
+  opacityTex: BaseTexture | null,
+): Promise<RawTexture> {
+  if (!opacityTex) {
+    throw new Error("bakeAlbedoPixels requires an opacity texture");
+  }
+  const merged = await mergeOpacityIntoDiffuse(scene, albedo, opacityTex, name, {
+    sampleRgb: opacityTex instanceof Texture && opacityTex.getAlphaFromRGB,
+  });
   surface.mergedDiffuse = merged;
   return merged;
 }

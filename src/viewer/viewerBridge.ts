@@ -2,6 +2,9 @@ import type { FurMaterial } from "@babylonjs/materials/fur";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { Node } from "@babylonjs/core/node";
 
+import type { BaseTexture } from "@babylonjs/core/Materials/Textures/baseTexture";
+import type { Texture } from "@babylonjs/core/Materials/Textures/texture";
+
 import type { FurInspectorDefaults, FurInspectorSlotId } from "../fur/furInspectorDefaults";
 
 export interface ViewerImportState {
@@ -31,6 +34,13 @@ export interface ViewerBridge {
   canRestoreFurSlot(slotId: FurInspectorSlotId): boolean;
   restoreFurInspectorSlot(slotId: FurInspectorSlotId): boolean;
   restoreFurInspectorProperties(): void;
+  getFurDensityMask(): BaseTexture | null;
+  applyFurDensityMask(mask: Texture): Promise<void>;
+  clearFurDensityMask(): Promise<void>;
+  getFurShellLift(): number;
+  setFurShellLift(value: number): void;
+  getFurStackDepth(): number;
+  setFurStackDepth(value: number): void;
 }
 
 type ImportListener = (state: ViewerImportState) => void;

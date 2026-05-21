@@ -128,8 +128,8 @@ function buildFurLayout(mat: Material): MaterialLayoutNode {
   };
   const slots: MaterialLayoutNode[] = [
     textureInfo(m.diffuseTexture ?? null, "diffuse", "Diffuse / albedo"),
-    textureInfo(m.heightTexture ?? null, "height", "Height"),
-    textureInfo(m.furTexture ?? null, "fur", "Fur noise"),
+    textureInfo(m.heightTexture ?? null, "fur-mask", "Fur mask (0–1)"),
+    textureInfo(m.furTexture ?? null, "fur", "Fur noise / strand mask"),
   ];
   if (m.diffuseColor) {
     slots.push(leaf("diffuse-color", "Diffuse color", colorHex(m.diffuseColor)));

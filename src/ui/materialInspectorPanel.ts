@@ -34,6 +34,8 @@ interface TextureSlotDef {
 interface FurTextureSlotDef {
   id: string;
   label: string;
+  /** Short note shown on the texture node. */
+  role?: string;
   getTexture: (mat: FurMaterial) => BaseTexture | null;
   setTexture: (mat: FurMaterial, tex: Texture) => void;
   allowReplace: boolean;
@@ -50,22 +52,24 @@ const FUR_TEXTURE_SLOTS: FurTextureSlotDef[] = [
     allowReplace: true,
   },
   {
-    id: "height",
-    label: "Height",
+    id: "fur-mask",
+    label: "Fur mask",
+    role: "Placement & thickness · grayscale 0–1",
     getTexture: (m) => m.heightTexture,
     setTexture: (m, t) => {
-      m.heightTexture = t;
+      m.heightTexture = t as FurMaterial["heightTexture"];
     },
     allowReplace: true,
   },
   {
     id: "fur-noise",
     label: "Fur noise",
+    role: "Strand pattern · A = strands, G = shells",
     getTexture: (m) => m.furTexture,
     setTexture: (m, t) => {
       m.furTexture = t as FurMaterial["furTexture"];
     },
-    allowReplace: false,
+    allowReplace: true,
   },
 ];
 
@@ -196,6 +200,33 @@ async function paintTextureThumb(container: HTMLElement, tex: BaseTexture | null
   await paintTextureThumbFromBuffer(container, tex);
 }
 
+function appendGraphConnector(parent: HTMLElement, extraClass = ""): void {
+  const connector = document.createElement("div");
+  connector.className = extraClass ? `mat-graph-connector ${extraClass}` : "mat-graph-connector";
+  connector.setAttribute("aria-hidden", "true");
+  parent.appendChild(connector);
+}
+
+/** Texture inputs wired into the material root (node graph layout). */
+function buildTextureNodeGraph(textureNodes: HTMLElement[]): HTMLElement {
+  const graph = document.createElement("div");
+  graph.className = "mat-graph";
+
+  const bus = document.createElement("div");
+  bus.className = "mat-graph-bus";
+  for (const node of textureNodes) {
+    const arm = document.createElement("div");
+    arm.className = "mat-graph-arm";
+    const wire = document.createElement("div");
+    wire.className = "mat-graph-wire";
+    wire.setAttribute("aria-hidden", "true");
+    arm.append(wire, node);
+    bus.appendChild(arm);
+  }
+  graph.appendChild(bus);
+  return graph;
+}
+
 function createFurDefaultButton(slotId: FurInspectorSlotId, onRestored: InspectorRefresh): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -211,42 +242,50 @@ function createFurDefaultButton(slotId: FurInspectorSlotId, onRestored: Inspecto
   return btn;
 }
 
-function createFurTextureSlotCard(
+function createFurTextureNode(
   mat: FurMaterial,
   slot: FurTextureSlotDef,
   onRestored: InspectorRefresh,
 ): HTMLElement {
-  const card = document.createElement("div");
-  card.className = "mat-slot-card";
-  card.dataset.slot = slot.id;
+  const node = document.createElement("div");
+  node.className = "mat-node mat-node--texture";
+  if (slot.id === "fur-mask") {
+    node.classList.add("mat-node--fur-mask");
+  }
+  node.dataset.slot = slot.id;
+
+  const typeBadge = document.createElement("span");
+  typeBadge.className = "mat-node-badge";
+  typeBadge.textContent = "Texture";
+
+  const label = document.createElement("span");
+  label.className = "mat-node-name";
+  label.textContent = slot.label;
+
+  const head = document.createElement("div");
+  head.className = "mat-node-head";
+  if (slot.role) {
+    head.title = slot.role;
+  }
+  head.append(typeBadge, label);
+  node.appendChild(head);
+
+  const body = document.createElement("div");
+  body.className = "mat-node-body mat-slot-card";
+  body.dataset.slot = slot.id;
 
   const thumb = document.createElement("div");
   thumb.className = "mat-slot-thumb";
   void paintTextureThumb(thumb, slot.getTexture(mat));
 
-  const label = document.createElement("span");
-  label.className = "mat-slot-label";
-  label.textContent = slot.label;
-
   const texName = document.createElement("span");
   texName.className = "mat-slot-texname";
   const current = slot.getTexture(mat);
-  texName.textContent = current?.name || (slot.id === "fur-noise" ? "Procedural" : "No texture");
-  texName.title = current?.name || "";
+  texName.textContent = current?.name || (slot.id === "fur-noise" ? "Procedural" : "—");
+  texName.title = current?.name || slot.role || "";
 
   const actions = document.createElement("div");
   actions.className = "mat-slot-actions";
-
-  if (!slot.allowReplace) {
-    const actions = document.createElement("div");
-    actions.className = "mat-slot-actions";
-    actions.append(createFurDefaultButton(slot.id as FurInspectorSlotId, onRestored));
-    const note = document.createElement("span");
-    note.className = "hint mat-slot-readonly";
-    note.textContent = "Procedural noise";
-    card.append(thumb, label, texName, actions, note);
-    return card;
-  }
 
   const fileInput = document.createElement("input");
   fileInput.type = "file";
@@ -268,6 +307,7 @@ function createFurTextureSlotCard(
     const scene = mat.getScene();
     if (!scene) return;
 
+    const bridge = getViewerBridge();
     const objectUrl = URL.createObjectURL(file);
     const tex = new Texture(
       objectUrl,
@@ -279,6 +319,30 @@ function createFurTextureSlotCard(
       () => URL.revokeObjectURL(objectUrl),
     );
     tex.name = file.name;
+    if (!file.type.includes("png")) {
+      tex.getAlphaFromRGB = true;
+    }
+
+    if (slot.id === "fur-mask" && bridge) {
+      replaceBtn.disabled = true;
+      texName.textContent = "Applying mask…";
+      void bridge
+        .applyFurDensityMask(tex)
+        .then(() => {
+          texName.textContent = file.name;
+          void paintTextureThumb(thumb, tex);
+          syncFurMaterial(mat);
+          onRestored();
+        })
+        .catch(() => {
+          texName.textContent = "Mask failed";
+        })
+        .finally(() => {
+          replaceBtn.disabled = false;
+        });
+      return;
+    }
+
     slot.setTexture(mat, tex);
     syncFurMaterial(mat);
     texName.textContent = file.name;
@@ -286,27 +350,41 @@ function createFurTextureSlotCard(
   });
 
   actions.append(replaceBtn, createFurDefaultButton(slot.id as FurInspectorSlotId, onRestored));
-  card.append(thumb, label, texName, actions, fileInput);
-  return card;
+  body.append(thumb, texName, actions, fileInput);
+  node.appendChild(body);
+  return node;
 }
 
-function createTextureSlotCard(mat: PBRMaterial, slot: TextureSlotDef): HTMLElement {
-  const card = document.createElement("div");
-  card.className = "mat-slot-card";
-  card.dataset.slot = slot.id;
+function createPbrTextureNode(mat: PBRMaterial, slot: TextureSlotDef): HTMLElement {
+  const node = document.createElement("div");
+  node.className = "mat-node mat-node--texture";
+  node.dataset.slot = slot.id;
+
+  const typeBadge = document.createElement("span");
+  typeBadge.className = "mat-node-badge";
+  typeBadge.textContent = "Texture";
+
+  const label = document.createElement("span");
+  label.className = "mat-node-name";
+  label.textContent = slot.label;
+
+  const head = document.createElement("div");
+  head.className = "mat-node-head";
+  head.append(typeBadge, label);
+  node.appendChild(head);
+
+  const body = document.createElement("div");
+  body.className = "mat-node-body mat-slot-card";
+  body.dataset.slot = slot.id;
 
   const thumb = document.createElement("div");
   thumb.className = "mat-slot-thumb";
   void paintTextureThumb(thumb, slot.getTexture(mat));
 
-  const label = document.createElement("span");
-  label.className = "mat-slot-label";
-  label.textContent = slot.label;
-
   const texName = document.createElement("span");
   texName.className = "mat-slot-texname";
   const current = slot.getTexture(mat);
-  texName.textContent = current?.name || "No texture";
+  texName.textContent = current?.name || "—";
   texName.title = current?.name || "";
 
   const actions = document.createElement("div");
@@ -369,8 +447,9 @@ function createTextureSlotCard(mat: PBRMaterial, slot: TextureSlotDef): HTMLElem
   });
 
   actions.append(replaceBtn, clearBtn);
-  card.append(thumb, label, texName, actions, fileInput);
-  return card;
+  body.append(thumb, texName, actions, fileInput);
+  node.appendChild(body);
+  return node;
 }
 
 function createScalarControl(
@@ -506,8 +585,22 @@ function createFurPropertyPanel(mat: FurMaterial, onRestored: InspectorRefresh):
   });
   colorRow.append(colorLbl, colorInput);
 
+  const bridge = getViewerBridge();
+
   panel.append(
     colorRow,
+    ...(bridge
+      ? [
+          createScalarControl("Fur length", bridge.getFurShellLift(), 0, 1.5, 0.001, (v) => v.toFixed(3), (v) => {
+            bridge.setFurShellLift(v);
+            syncFurMaterial(mat);
+          }),
+          createScalarControl("Stack depth", bridge.getFurStackDepth(), 0, 1, 0.01, (v) => v.toFixed(2), (v) => {
+            bridge.setFurStackDepth(v);
+            syncFurMaterial(mat);
+          }),
+        ]
+      : []),
     createScalarControl("Fur angle", mat.furAngle, 0, Math.PI, 0.01, (v) => v.toFixed(2), (v) => {
       mat.furAngle = v;
       syncFurMaterial(mat);
@@ -572,53 +665,43 @@ function createMaterialGraph(
   nameEl.textContent = material.name || "(unnamed)";
   root.append(typeBadge, nameEl);
 
-  const connector = document.createElement("div");
-  connector.className = "mat-graph-connector";
-  connector.setAttribute("aria-hidden", "true");
-
-  block.append(root, connector);
+  const graphShell = document.createElement("div");
+  graphShell.className = "mat-graph-shell";
+  graphShell.appendChild(root);
+  appendGraphConnector(graphShell, "mat-graph-connector--root");
 
   if (isEditableFur(material)) {
-    const slotsTitle = document.createElement("p");
-    slotsTitle.className = "mat-graph-slots-title";
-    slotsTitle.textContent = "Fur texture slots";
-
-    const grid = document.createElement("div");
-    grid.className = "mat-slot-grid";
     const refreshFurUi = () => {
       onFurRestored();
     };
 
-    for (const slot of FUR_TEXTURE_SLOTS) {
-      grid.appendChild(createFurTextureSlotCard(material, slot, refreshFurUi));
-    }
+    const textureNodes = FUR_TEXTURE_SLOTS.map((slot) =>
+      createFurTextureNode(material, slot, refreshFurUi),
+    );
+    graphShell.appendChild(buildTextureNodeGraph(textureNodes));
 
+    const propsWrap = document.createElement("div");
+    propsWrap.className = "mat-graph-props";
     const propsTitle = document.createElement("p");
     propsTitle.className = "mat-graph-slots-title";
     propsTitle.textContent = "Fur properties";
-
     const furNote = document.createElement("p");
     furNote.className = "hint mat-inspector-hint";
     furNote.textContent =
-      "Edits apply to the hull and every fur shell layer. Animation speed: lower % = calmer motion.";
-
-    block.append(slotsTitle, grid, propsTitle, furNote, createFurPropertyPanel(material, refreshFurUi));
+      "Mask texture: 0–1 grayscale for where/how thick. Fur length sets overall shell stack height.";
+    propsWrap.append(propsTitle, furNote, createFurPropertyPanel(material, refreshFurUi));
+    block.append(graphShell, propsWrap);
   } else if (isEditablePbr(material)) {
-    const slotsTitle = document.createElement("p");
-    slotsTitle.className = "mat-graph-slots-title";
-    slotsTitle.textContent = "Texture slots";
+    const textureNodes = PBR_TEXTURE_SLOTS.map((slot) => createPbrTextureNode(material, slot));
+    graphShell.appendChild(buildTextureNodeGraph(textureNodes));
 
-    const grid = document.createElement("div");
-    grid.className = "mat-slot-grid";
-    for (const slot of PBR_TEXTURE_SLOTS) {
-      grid.appendChild(createTextureSlotCard(material, slot));
-    }
-
+    const propsWrap = document.createElement("div");
+    propsWrap.className = "mat-graph-props";
     const propsTitle = document.createElement("p");
     propsTitle.className = "mat-graph-slots-title";
     propsTitle.textContent = "Material properties";
-
-    block.append(slotsTitle, grid, propsTitle, createPbrPropertyPanel(material));
+    propsWrap.append(propsTitle, createPbrPropertyPanel(material));
+    block.append(graphShell, propsWrap);
   } else {
     const note = document.createElement("p");
     note.className = "hint mat-inspector-readonly";

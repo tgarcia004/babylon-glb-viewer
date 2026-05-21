@@ -5,14 +5,16 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { FurMaterial } from "@babylonjs/materials/fur";
 
+import { applyFurDensityMask } from "./furDensityMask";
 import { clampFurSpeed, syncShellMaterials } from "./configureFur";
 
-export type FurInspectorSlotId = "diffuse" | "height" | "fur-noise";
+export type FurInspectorSlotId = "diffuse" | "fur-mask" | "fur-noise";
 
 /** Baseline fur material state captured when fur is built for a model. */
 export interface FurInspectorDefaults {
   diffuseTexture: BaseTexture | null;
   heightTexture: BaseTexture | null;
+  furTexture: BaseTexture | null;
   diffuseColor: Color3;
   furAngle: number;
   furDensity: number;
@@ -25,7 +27,7 @@ export interface FurInspectorDefaults {
 export function canRestoreFurSlot(defaults: FurInspectorDefaults | null, slotId: FurInspectorSlotId): boolean {
   if (!defaults) return false;
   if (slotId === "diffuse") return !!defaults.diffuseTexture;
-  if (slotId === "height") return !!defaults.heightTexture;
+  if (slotId === "fur-mask") return true;
   return true;
 }
 
@@ -35,21 +37,40 @@ export function restoreFurSlot(
   shells: Mesh[],
   defaults: FurInspectorDefaults,
   slotId: FurInspectorSlotId,
+  shellLift: number,
 ): boolean {
   if (!canRestoreFurSlot(defaults, slotId)) return false;
 
   if (slotId === "diffuse" && defaults.diffuseTexture) {
     hull.diffuseTexture = defaults.diffuseTexture;
-  } else if (slotId === "height" && defaults.heightTexture) {
-    hull.heightTexture = defaults.heightTexture;
-  } else if (slotId === "fur-noise") {
-    hull.furTexture = FurMaterial.GenerateTexture("furTexture", scene);
+    syncShellMaterials(shells, hull);
+    hull.updateFur();
+    scene.resetCachedMaterial();
+    return true;
   }
 
-  syncShellMaterials(shells, hull);
-  hull.updateFur();
-  scene.resetCachedMaterial();
-  return true;
+  if (slotId === "fur-mask") {
+    void applyFurDensityMask(scene, hull, shells, defaults.heightTexture, {
+      shellLift,
+      maskStrength: 1,
+      rebakeNoise: true,
+    });
+    return true;
+  }
+
+  if (slotId === "fur-noise") {
+    if (defaults.furTexture) {
+      hull.furTexture = defaults.furTexture as FurMaterial["furTexture"];
+    } else {
+      hull.furTexture = FurMaterial.GenerateTexture("furTexture", scene);
+    }
+    syncShellMaterials(shells, hull);
+    hull.updateFur();
+    scene.resetCachedMaterial();
+    return true;
+  }
+
+  return false;
 }
 
 export function restoreFurProperties(hull: FurMaterial, shells: Mesh[], defaults: FurInspectorDefaults): void {
@@ -74,6 +95,7 @@ export function snapshotFurInspectorDefaults(
   return {
     diffuseTexture: hull.diffuseTexture ?? null,
     heightTexture,
+    furTexture: hull.furTexture ?? null,
     diffuseColor: hull.diffuseColor.clone(),
     furAngle: hull.furAngle,
     furDensity: hull.furDensity,

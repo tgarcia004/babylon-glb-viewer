@@ -1368,6 +1368,157 @@ body.panel-resizing * {
   border-radius: 1px;
 }
 
+.mat-graph-connector--root {
+  height: 18px;
+}
+
+.mat-graph-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: 0;
+}
+
+.mat-graph {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.mat-graph-bus {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 108px);
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+  justify-content: start;
+}
+
+.mat-graph-arm {
+  display: block;
+  width: 108px;
+}
+
+.mat-graph-wire {
+  display: none;
+}
+
+.mat-node--texture {
+  box-sizing: border-box;
+  width: 108px;
+  min-width: 108px;
+  max-width: 108px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  text-align: center;
+  padding: 6px;
+  gap: 0;
+}
+
+.mat-node--texture .mat-node-head {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  margin-bottom: 3px;
+}
+
+.mat-node--texture .mat-node-badge {
+  font-size: 8px;
+  line-height: 1;
+}
+
+.mat-node--texture .mat-node-name {
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.15;
+  word-break: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 96px;
+}
+
+.mat-node--fur-mask {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-default));
+}
+
+.mat-node-role {
+  display: none;
+}
+
+.mat-node-body {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0 !important;
+  gap: 2px !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.mat-node-body.mat-slot-card {
+  border: none;
+  background: transparent;
+}
+
+.mat-node-body.mat-slot-card::before {
+  display: none;
+}
+
+.mat-node-body .mat-slot-thumb {
+  flex: 0 0 auto;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  height: auto;
+  max-height: none;
+  border-radius: 4px;
+}
+
+.mat-node-body .mat-slot-thumb-img,
+.mat-node-body .mat-slot-thumb canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mat-node-body .mat-slot-texname {
+  flex: 0 0 auto;
+  font-size: 8px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+  text-align: center;
+}
+
+.mat-node-body .mat-slot-btn {
+  padding: 2px 4px;
+  font-size: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.mat-node-body .mat-slot-actions {
+  flex: 0 0 auto;
+  gap: 2px;
+  display: flex;
+  width: 100%;
+}
+
+.mat-graph-props {
+  width: 100%;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
 .mat-graph-slots-title {
   margin: 10px 0 6px;
   align-self: flex-start;

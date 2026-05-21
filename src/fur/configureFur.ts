@@ -18,7 +18,7 @@ export const FUR_SPEED_MAX = 600;
 
 export const FUR_DEFAULTS = {
   /** UI "Fur length" — how far shell layers sit above the hull (mesh-scaled). */
-  shellLift: 0.05,
+  shellLift: 0,
   /** UI "Stack depth" — thickness of the shell stack outward. */
   stackDepth: 0.35,
   furAngle: 0,
@@ -106,7 +106,7 @@ function applySurfaceToFur(fur: FurMaterial, surface: MaterialSurface | null): v
   fur.transparencyMode = Material.MATERIAL_OPAQUE;
 }
 
-function applyFurAlphaMask(
+export function applyFurMaterialAlphaMode(
   fur: FurMaterial,
   surface: MaterialSurface | null,
   diffuse: BaseTexture | null,
@@ -145,6 +145,7 @@ export function syncShellMaterials(shells: Mesh[], fur: FurMaterial): void {
     mat.furSpeed = clampFurSpeed(fur.furSpeed);
     mat.furGravity = fur.furGravity.clone();
     mat.furTime = fur.furTime;
+    mat.furLength = fur.furLength;
   }
 }
 
@@ -166,7 +167,7 @@ export function applyFur(
   if (diffuseTexture) {
     const tex = diffuseTexture as Texture;
     fur.diffuseTexture = tex;
-    applyFurAlphaMask(fur, surface, tex, useBakedAlphaMask);
+    applyFurMaterialAlphaMode(fur, surface, tex, useBakedAlphaMask);
   }
   fur.furTexture = FurMaterial.GenerateTexture("furTexture", mesh.getScene());
   const quality = capFurQuality(mesh, settings.quality);
