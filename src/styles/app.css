@@ -1254,6 +1254,8 @@ body.panel-resizing * {
   min-height: 120px;
   max-height: min(52vh, 480px);
   overflow-y: auto;
+  overflow-anchor: none;
+  overscroll-behavior: contain;
   padding: 10px 12px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
@@ -1658,6 +1660,11 @@ body.panel-resizing * {
 .mat-prop-range {
   width: 100%;
   accent-color: var(--accent);
+  scroll-margin: 0;
+}
+
+.hierarchy-detail .mat-prop-range:focus {
+  outline: none;
 }
 
 .mat-prop-val {

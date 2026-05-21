@@ -59,14 +59,6 @@ function syncLightRole(
 
 export function syncPanelFromSnapshot(panel: HTMLElement, snapshot: SceneSnapshotV1): void {
   setCheckbox(panel, "fur-enabled", snapshot.fur.enabled);
-  const fs = snapshot.fur.settings;
-  setRange(panel, "fur-quality", "fur-quality-val", fs.quality, (v) => String(Math.round(v)));
-  setRange(panel, "fur-length", "fur-length-val", fs.shellLift, (v) => v.toFixed(3));
-  setRange(panel, "fur-angle", "fur-angle-val", fs.furAngle, (v) => v.toFixed(2));
-  setRange(panel, "fur-spacing", "fur-spacing-val", fs.stackDepth, (v) => v.toFixed(2));
-  setRange(panel, "fur-density", "fur-density-val", fs.furDensity, (v) => String(Math.round(v)));
-  setRange(panel, "fur-speed", "fur-speed-val", fs.furSpeed, (v) => String(Math.round(v)));
-  setRange(panel, "fur-gravity-y", "fur-gravity-y-val", fs.furGravity.y, (v) => v.toFixed(2));
 
   syncLightRole(panel, "key", snapshot.lighting.key);
   syncLightRole(panel, "fill", snapshot.lighting.fill);

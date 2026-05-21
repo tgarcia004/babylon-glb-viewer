@@ -5,6 +5,7 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { FurMaterial } from "@babylonjs/materials/fur";
 
+import { applyUniversalMaterialUv, readUniversalMaterialUv, type TextureUvState } from "../material/materialUv";
 import { applyFurDensityMask } from "./furDensityMask";
 import { clampFurSpeed, syncShellMaterials } from "./configureFur";
 
@@ -22,6 +23,10 @@ export interface FurInspectorDefaults {
   furGravity: Vector3;
   alpha: number;
   transparencyMode: number;
+  shellLift: number;
+  stackDepth: number;
+  quality: number;
+  uv: TextureUvState;
 }
 
 export function canRestoreFurSlot(defaults: FurInspectorDefaults | null, slotId: FurInspectorSlotId): boolean {
@@ -82,6 +87,7 @@ export function restoreFurProperties(hull: FurMaterial, shells: Mesh[], defaults
   hull.furGravity = defaults.furGravity.clone();
   hull.alpha = defaults.alpha;
   hull.transparencyMode = defaults.transparencyMode;
+  applyUniversalMaterialUv(hull, defaults.uv);
 
   syncShellMaterials(shells, hull);
   hull.getScene()?.resetCachedMaterial();
@@ -91,6 +97,9 @@ export function restoreFurProperties(hull: FurMaterial, shells: Mesh[], defaults
 export function snapshotFurInspectorDefaults(
   hull: FurMaterial,
   heightTexture: BaseTexture | null,
+  shellLift: number,
+  stackDepth: number,
+  quality: number,
 ): FurInspectorDefaults {
   return {
     diffuseTexture: hull.diffuseTexture ?? null,
@@ -103,5 +112,9 @@ export function snapshotFurInspectorDefaults(
     furGravity: hull.furGravity.clone(),
     alpha: hull.alpha,
     transparencyMode: hull.transparencyMode ?? 0,
+    shellLift,
+    stackDepth,
+    quality,
+    uv: readUniversalMaterialUv(hull),
   };
 }

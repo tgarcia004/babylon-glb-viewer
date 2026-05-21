@@ -33,6 +33,7 @@ import {
 import { applyFurDensityMask as applyFurDensityMaskToMaterial } from "../fur/furDensityMask";
 import {
   captureFurEditorSnapshot,
+  furEditorSnapshotFromInspectorDefaults,
   restoreFurEditorSnapshot,
   type FurEditorSnapshot,
 } from "../fur/furEditorSnapshot";
@@ -87,8 +88,12 @@ import {
 } from "../viewer/configureCamera";
 import { registerThemeScene, type ViewerTheme } from "../ui/theme";
 import { furSettingsFromSnapshot, type SceneSnapshotV1 } from "../scene/sceneSnapshot";
-import { setRange, wireSceneSnapshotPanel } from "../ui/wireSceneSnapshot";
-import { initObjectHierarchyPanel, notifyHierarchySelection } from "../ui/objectHierarchyPanel";
+import { wireSceneSnapshotPanel } from "../ui/wireSceneSnapshot";
+import {
+  initObjectHierarchyPanel,
+  notifyHierarchySelection,
+  refreshHierarchySummary,
+} from "../ui/objectHierarchyPanel";
 import { emitViewerImportState, registerViewerBridge } from "../viewer/viewerBridge";
 import {
   refreshViewportPerfIndicator,
@@ -320,17 +325,6 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     });
   }
 
-  function syncPreviewFurSliders(): void {
-    if (!panel) return;
-    const s = live.settings;
-    setRange(panel, "fur-length", "fur-length-val", s.shellLift, (v) => v.toFixed(3));
-    setRange(panel, "fur-spacing", "fur-spacing-val", s.stackDepth, (v) => v.toFixed(2));
-    setRange(panel, "fur-speed", "fur-speed-val", s.furSpeed, (v) => String(Math.round(v)));
-    setRange(panel, "fur-angle", "fur-angle-val", s.furAngle, (v) => v.toFixed(2));
-    setRange(panel, "fur-density", "fur-density-val", s.furDensity, (v) => String(Math.round(v)));
-    setRange(panel, "fur-gravity-y", "fur-gravity-y-val", s.furGravity.y, (v) => v.toFixed(2));
-  }
-
   async function refreshFurMaskLength(): Promise<void> {
     if (!fur?.material.heightTexture) return;
     await applyFurDensityMaskToMaterial(scene, fur.material, fur.shells, fur.material.heightTexture, {
@@ -418,11 +412,15 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
 
   async function rebuildFur(): Promise<void> {
     const generation = ++rebuildGeneration;
+    const hadFurBeforeRebuild = !!fur;
     if (fur) {
-      furEditorSnapshot = captureFurEditorSnapshot(fur.material);
+      if (!live.enabled) {
+        furEditorSnapshot = captureFurEditorSnapshot(fur.material);
+      }
       if (fur.material.heightTexture) {
         furDensityMaskTexture = fur.material.heightTexture;
       }
+      // Keep textures when disabling so furEditorSnapshot stays valid for re-enable.
       fur.dispose({ preserveTextures: true });
       fur = null;
     }
@@ -472,6 +470,9 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     }
 
     const effectiveQuality = capFurQuality(hullMesh, live.settings.quality);
+    if (effectiveQuality !== live.settings.quality) {
+      live.settings.quality = effectiveQuality;
+    }
     fur = applyFur(
       hullMesh,
       texture,
@@ -487,14 +488,13 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       return;
     }
 
-    if (furEditorSnapshot) {
+    if (furEditorSnapshot && !hadFurBeforeRebuild) {
       restoreFurEditorSnapshot(fur.material, fur.shells, furEditorSnapshot);
       applyLiveFurSettings();
       live.settings.furAngle = fur.material.furAngle;
       live.settings.furDensity = fur.material.furDensity;
       live.settings.furSpeed = clampFurSpeed(fur.material.furSpeed);
       live.settings.furGravity = fur.material.furGravity.clone();
-      syncPreviewFurSliders();
     } else {
       const autoMask = furDensityMaskTexture ?? hullPbrMaterial?.bumpTexture ?? null;
       if (autoMask) {
@@ -510,6 +510,9 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       furInspectorDefaults = snapshotFurInspectorDefaults(
         fur.material,
         fur.material.heightTexture ?? null,
+        live.settings.shellLift,
+        live.settings.stackDepth,
+        live.settings.quality,
       );
     }
 
@@ -525,7 +528,11 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     }
     refreshCameraConstraints();
     refreshViewportPerfIndicator();
-    pushImportState();
+    if (live.enabled && fur && hadFurBeforeRebuild) {
+      refreshHierarchySummary();
+    } else {
+      pushImportState();
+    }
   }
 
   function syncPbrProfileUi(): void {
@@ -628,7 +635,6 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       syncShellMaterials(fur.shells, m);
       m.updateFur();
       scene.resetCachedMaterial();
-      syncPreviewFurSliders();
     },
     getFurInspectorDefaults: () => furInspectorDefaults,
     canRestoreFurSlot: (slotId: FurInspectorSlotId) => canRestoreFurSlot(furInspectorDefaults, slotId),
@@ -654,13 +660,28 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       live.settings.shellLift = value;
       applyLiveFurSettings();
       void refreshFurMaskLength();
-      syncPreviewFurSliders();
     },
     getFurStackDepth: () => live.settings.stackDepth,
     setFurStackDepth: (value) => {
       live.settings.stackDepth = value;
       applyLiveFurSettings();
-      syncPreviewFurSliders();
+    },
+    getFurQuality: () => live.settings.quality,
+    setFurQuality: (value) => {
+      const next = Math.round(Math.max(4, Math.min(32, value)));
+      if (next === live.settings.quality) return;
+      live.settings.quality = next;
+      if (!live.enabled) return;
+      const detail = document.getElementById("object-hierarchy-detail");
+      const tree = document.getElementById("object-hierarchy-tree");
+      const detailScroll = detail?.scrollTop ?? 0;
+      const treeScroll = tree?.scrollTop ?? 0;
+      void rebuildFur().finally(() => {
+        requestAnimationFrame(() => {
+          if (detail) detail.scrollTop = detailScroll;
+          if (tree) tree.scrollTop = treeScroll;
+        });
+      });
     },
     restoreFurInspectorSlot: (slotId: FurInspectorSlotId) => {
       if (!fur || !furInspectorDefaults) return false;
@@ -678,12 +699,22 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     },
     restoreFurInspectorProperties: () => {
       if (!fur || !furInspectorDefaults) return;
-      restoreFurProperties(fur.material, fur.shells, furInspectorDefaults);
-      live.settings.furAngle = furInspectorDefaults.furAngle;
-      live.settings.furDensity = furInspectorDefaults.furDensity;
-      live.settings.furSpeed = furInspectorDefaults.furSpeed;
-      live.settings.furGravity = furInspectorDefaults.furGravity.clone();
+      const defaults = furInspectorDefaults;
+      const qualityChanged = live.settings.quality !== defaults.quality;
+      live.settings.shellLift = defaults.shellLift;
+      live.settings.stackDepth = defaults.stackDepth;
+      live.settings.quality = defaults.quality;
+      live.settings.furAngle = defaults.furAngle;
+      live.settings.furDensity = defaults.furDensity;
+      live.settings.furSpeed = defaults.furSpeed;
+      live.settings.furGravity = defaults.furGravity.clone();
+      if (qualityChanged) {
+        furEditorSnapshot = furEditorSnapshotFromInspectorDefaults(defaults);
+        return rebuildFur().then(() => refreshFurMaskLength());
+      }
+      restoreFurProperties(fur.material, fur.shells, defaults);
       applyLiveFurSettings();
+      void refreshFurMaskLength();
     },
   });
 
@@ -788,35 +819,6 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       },
       { fireInitial: false },
     );
-    bindRange(panel, "fur-quality", "fur-quality-val", (v) => String(Math.round(v)), (v) => {
-      live.settings.quality = Math.round(v);
-      if (live.enabled) void rebuildFur();
-    });
-    bindRange(panel, "fur-length", "fur-length-val", (v) => v.toFixed(3), (v) => {
-      live.settings.shellLift = v;
-      applyLiveFurSettings();
-    });
-    bindRange(panel, "fur-angle", "fur-angle-val", (v) => v.toFixed(2), (v) => {
-      live.settings.furAngle = v;
-      applyLiveFurSettings();
-    });
-    bindRange(panel, "fur-spacing", "fur-spacing-val", (v) => v.toFixed(2), (v) => {
-      live.settings.stackDepth = v;
-      applyLiveFurSettings();
-    });
-    bindRange(panel, "fur-density", "fur-density-val", (v) => String(Math.round(v)), (v) => {
-      live.settings.furDensity = v;
-      applyLiveFurSettings();
-    });
-    bindRange(panel, "fur-speed", "fur-speed-val", (v) => String(Math.round(v)), (v) => {
-      live.settings.furSpeed = v;
-      applyLiveFurSettings();
-    });
-    bindRange(panel, "fur-gravity-y", "fur-gravity-y-val", (v) => v.toFixed(2), (v) => {
-      live.settings.furGravity.y = v;
-      applyLiveFurSettings();
-    });
-
     panel.querySelector("#pbr-profile-prev")?.addEventListener("click", () => {
       pbrProfileId = cyclePbrProfile(pbrProfileId, -1);
       refreshPbrProfile();

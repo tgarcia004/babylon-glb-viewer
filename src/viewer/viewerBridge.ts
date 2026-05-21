@@ -33,7 +33,7 @@ export interface ViewerBridge {
   getFurInspectorDefaults(): FurInspectorDefaults | null;
   canRestoreFurSlot(slotId: FurInspectorSlotId): boolean;
   restoreFurInspectorSlot(slotId: FurInspectorSlotId): boolean;
-  restoreFurInspectorProperties(): void;
+  restoreFurInspectorProperties(): void | Promise<void>;
   getFurDensityMask(): BaseTexture | null;
   applyFurDensityMask(mask: Texture): Promise<void>;
   clearFurDensityMask(): Promise<void>;
@@ -41,6 +41,8 @@ export interface ViewerBridge {
   setFurShellLift(value: number): void;
   getFurStackDepth(): number;
   setFurStackDepth(value: number): void;
+  getFurQuality(): number;
+  setFurQuality(value: number): void;
 }
 
 type ImportListener = (state: ViewerImportState) => void;

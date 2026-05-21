@@ -505,6 +505,71 @@ function createScalarControl(
   return row;
 }
 
+function bindScrollLockWhileDragging(input: HTMLInputElement): void {
+  const scrollEl = input.closest(".hierarchy-detail");
+  if (!scrollEl) return;
+
+  let lockedTop = scrollEl.scrollTop;
+  const lockScroll = (): void => {
+    scrollEl.scrollTop = lockedTop;
+  };
+
+  input.addEventListener("pointerdown", () => {
+    lockedTop = scrollEl.scrollTop;
+  });
+  input.addEventListener("input", lockScroll);
+  input.addEventListener("pointermove", lockScroll);
+  input.addEventListener("focus", () => {
+    requestAnimationFrame(lockScroll);
+  });
+}
+
+/** Range slider: live label on drag, commit on release (avoids rebuild spam). */
+function createScalarControlOnCommit(
+  label: string,
+  value: number,
+  min: number,
+  max: number,
+  step: number,
+  format: (v: number) => string,
+  onCommit: (v: number) => void,
+  lockScrollWhileDrag = false,
+): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "mat-prop-row";
+
+  const lbl = document.createElement("label");
+  lbl.className = "mat-prop-label";
+  lbl.textContent = label;
+
+  const input = document.createElement("input");
+  input.type = "range";
+  input.className = "mat-prop-range";
+  input.min = String(min);
+  input.max = String(max);
+  input.step = String(step);
+  input.value = String(value);
+
+  const val = document.createElement("span");
+  val.className = "mat-prop-val";
+  val.textContent = format(value);
+
+  input.addEventListener("input", () => {
+    const v = parseFloat(input.value);
+    val.textContent = format(v);
+  });
+  input.addEventListener("change", () => {
+    onCommit(parseFloat(input.value));
+  });
+
+  if (lockScrollWhileDrag) {
+    bindScrollLockWhileDragging(input);
+  }
+
+  row.append(lbl, input, val);
+  return row;
+}
+
 interface ScalarControlHandle {
   row: HTMLElement;
   setValue: (value: number) => void;
@@ -628,8 +693,12 @@ function createFurPropertyPanel(mat: FurMaterial, onRestored: InspectorRefresh):
   resetBtn.textContent = "Reset properties to default";
   resetBtn.disabled = !getViewerBridge()?.getFurInspectorDefaults();
   resetBtn.addEventListener("click", () => {
-    getViewerBridge()?.restoreFurInspectorProperties();
-    onRestored();
+    const result = getViewerBridge()?.restoreFurInspectorProperties();
+    if (result instanceof Promise) {
+      void result.then(() => onRestored());
+    } else {
+      onRestored();
+    }
   });
   resetRow.appendChild(resetBtn);
   panel.appendChild(resetRow);
@@ -655,21 +724,33 @@ function createFurPropertyPanel(mat: FurMaterial, onRestored: InspectorRefresh):
     colorRow,
     ...(bridge
       ? [
+          createScalarControlOnCommit(
+            "Shell quality",
+            bridge.getFurQuality(),
+            4,
+            32,
+            1,
+            (v) => String(Math.round(v)),
+            (v) => {
+              bridge.setFurQuality(v);
+            },
+            true,
+          ),
           createScalarControl("Fur length", bridge.getFurShellLift(), 0, 1.5, 0.001, (v) => v.toFixed(3), (v) => {
             bridge.setFurShellLift(v);
             syncFurMaterial(mat);
           }),
-          createScalarControl("Stack depth", bridge.getFurStackDepth(), 0, 1, 0.01, (v) => v.toFixed(2), (v) => {
+          createScalarControl("Stack depth", bridge.getFurStackDepth(), 0, 3, 0.01, (v) => v.toFixed(2), (v) => {
             bridge.setFurStackDepth(v);
             syncFurMaterial(mat);
           }),
         ]
       : []),
-    createScalarControl("Fur angle", mat.furAngle, 0, Math.PI, 0.01, (v) => v.toFixed(2), (v) => {
+    createScalarControl("Fur angle", mat.furAngle, 0, Math.PI, 0.05, (v) => v.toFixed(2), (v) => {
       mat.furAngle = v;
       syncFurMaterial(mat);
     }),
-    createScalarControl("Fur density", mat.furDensity, 0, 80, 1, (v) => String(Math.round(v)), (v) => {
+    createScalarControl("Fur density", mat.furDensity, 4, 40, 1, (v) => String(Math.round(v)), (v) => {
       mat.furDensity = v;
       syncFurMaterial(mat);
     }),
@@ -690,7 +771,7 @@ function createFurPropertyPanel(mat: FurMaterial, onRestored: InspectorRefresh):
         syncFurMaterial(mat);
       },
     ),
-    createScalarControl("Gravity Y", mat.furGravity.y, -2, 2, 0.05, (v) => v.toFixed(2), (v) => {
+    createScalarControl("Gravity", mat.furGravity.y, -3, 1, 0.1, (v) => v.toFixed(2), (v) => {
       mat.furGravity = new Vector3(mat.furGravity.x, v, mat.furGravity.z);
       syncFurMaterial(mat);
     }),
@@ -881,7 +962,7 @@ function createMaterialGraph(
     const furNote = document.createElement("p");
     furNote.className = "hint mat-inspector-hint";
     furNote.textContent =
-      "Mask texture: 0–1 grayscale for where/how thick. Fur length sets overall shell stack height.";
+      "Mask: 0–1 grayscale for placement and thickness. Sliders below match the former Preview fur controls.";
     propsWrap.append(
       propsTitle,
       furNote,
@@ -916,6 +997,7 @@ function createMaterialGraph(
 
 /** Visual material inspector (node cards + texture replace + PBR sliders). */
 export function renderMaterialInspector(container: HTMLElement, sceneNode: Node | null): void {
+  const scrollTop = container.scrollTop;
   container.querySelector(".mat-inspector")?.remove();
 
   const section = document.createElement("div");
@@ -959,4 +1041,7 @@ export function renderMaterialInspector(container: HTMLElement, sceneNode: Node 
   }
   section.appendChild(graph);
   container.appendChild(section);
+  requestAnimationFrame(() => {
+    container.scrollTop = scrollTop;
+  });
 }

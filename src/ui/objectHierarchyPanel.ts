@@ -115,9 +115,17 @@ function setSelectedNodeId(id: string | null): void {
   }
 }
 
-function showNodeDetail(node: HierarchyNode): void {
+function showNodeDetail(node: HierarchyNode, force = false): void {
   const detail = document.getElementById("object-hierarchy-detail");
   if (!detail) return;
+
+  const nodeId = String(node.uniqueId);
+  if (!force && detail.dataset.selectedUniqueId === nodeId && detail.querySelector(".mat-inspector")) {
+    return;
+  }
+
+  const scrollTop = detail.scrollTop;
+  detail.dataset.selectedUniqueId = nodeId;
 
   const lines = [
     ["Name", node.name],
@@ -147,6 +155,9 @@ function showNodeDetail(node: HierarchyNode): void {
 
   const sceneNode = getViewerBridge()?.findNodeByUniqueId(node.uniqueId) ?? null;
   renderMaterialInspector(detail, sceneNode);
+  requestAnimationFrame(() => {
+    detail.scrollTop = scrollTop;
+  });
 }
 
 function renderTree(forest: HierarchyNode[]): void {
@@ -171,7 +182,9 @@ function renderTree(forest: HierarchyNode[]): void {
   for (const node of forest) {
     rootList.appendChild(renderTreeNode(node, 0, selectedNodeId));
   }
+  const treeScrollTop = tree.scrollTop;
   tree.replaceChildren(rootList);
+  tree.scrollTop = treeScrollTop;
 
   const total = countHierarchyNodes(forest);
   if (summary) {
@@ -182,6 +195,21 @@ function renderTree(forest: HierarchyNode[]): void {
     } else {
       summary.textContent = `${total} node${total === 1 ? "" : "s"} · ${forest.length} root${forest.length === 1 ? "" : "s"}`;
     }
+  }
+}
+
+/** Update fur shell count in the header without rebuilding the tree or inspector. */
+export function refreshHierarchySummary(): void {
+  const summary = document.getElementById("object-hierarchy-summary");
+  if (!summary || lastForest.length === 0) return;
+
+  const bridge = getViewerBridge();
+  const fur = bridge?.getFurState();
+  const total = countHierarchyNodes(lastForest);
+  if (fur?.enabled) {
+    summary.textContent = `Fur preview · ${fur.shellCount} shell${fur.shellCount === 1 ? "" : "s"} · ${total} node${total === 1 ? "" : "s"}`;
+  } else {
+    summary.textContent = `${total} node${total === 1 ? "" : "s"} · ${lastForest.length} root${lastForest.length === 1 ? "" : "s"}`;
   }
 }
 
@@ -252,10 +280,11 @@ export function notifyHierarchySelection(uniqueId: number | null): void {
   const detail = document.getElementById("object-hierarchy-detail");
   if (uniqueId == null) {
     detail?.replaceChildren();
+    if (detail) delete detail.dataset.selectedUniqueId;
     return;
   }
   const node = findHierarchyNode(lastForest, uniqueId);
   if (node) {
-    showNodeDetail(node);
+    showNodeDetail(node, true);
   }
 }

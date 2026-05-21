@@ -9,6 +9,7 @@ import {
   readUniversalMaterialUv,
   type TextureUvState,
 } from "../material/materialUv";
+import type { FurInspectorDefaults } from "./furInspectorDefaults";
 import { clampFurSpeed, syncShellMaterials } from "./configureFur";
 
 export type { TextureUvState } from "../material/materialUv";
@@ -27,6 +28,25 @@ export interface FurEditorSnapshot {
   heightTexture: BaseTexture | null;
   furTexture: BaseTexture | null;
   uv: TextureUvState;
+}
+
+/** Snapshot used to re-apply inspector “Default” baseline after a shell-quality rebuild. */
+export function furEditorSnapshotFromInspectorDefaults(defaults: FurInspectorDefaults): FurEditorSnapshot {
+  return {
+    diffuseColor: defaults.diffuseColor.clone(),
+    furAngle: defaults.furAngle,
+    furDensity: defaults.furDensity,
+    furSpeed: clampFurSpeed(defaults.furSpeed),
+    furGravity: defaults.furGravity.clone(),
+    alpha: defaults.alpha,
+    transparencyMode: defaults.transparencyMode,
+    furLength: 0,
+    furTime: 0,
+    diffuseTexture: defaults.diffuseTexture,
+    heightTexture: defaults.heightTexture,
+    furTexture: defaults.furTexture,
+    uv: { ...defaults.uv },
+  };
 }
 
 export function captureFurEditorSnapshot(hull: FurMaterial): FurEditorSnapshot {
