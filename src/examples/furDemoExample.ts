@@ -21,7 +21,23 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 
 import { FurMaterial } from "@babylonjs/materials/fur";
-import { applyFur, capFurQuality, FUR_DEFAULTS, type FurInstance, type FurSettings } from "../fur/configureFur";
+import {
+  applyFur,
+  capFurQuality,
+  clampFurSpeed,
+  FUR_DEFAULTS,
+  syncShellMaterials,
+  type FurInstance,
+  type FurSettings,
+} from "../fur/configureFur";
+import {
+  canRestoreFurSlot,
+  restoreFurProperties,
+  restoreFurSlot,
+  snapshotFurInspectorDefaults,
+  type FurInspectorDefaults,
+  type FurInspectorSlotId,
+} from "../fur/furInspectorDefaults";
 import {
   buildFurDiffuseTexture,
   describeMaterialSurface,
@@ -65,7 +81,7 @@ import {
 } from "../viewer/configureCamera";
 import { registerThemeScene, type ViewerTheme } from "../ui/theme";
 import { furSettingsFromSnapshot, type SceneSnapshotV1 } from "../scene/sceneSnapshot";
-import { wireSceneSnapshotPanel } from "../ui/wireSceneSnapshot";
+import { setRange, wireSceneSnapshotPanel } from "../ui/wireSceneSnapshot";
 import { initObjectHierarchyPanel, notifyHierarchySelection } from "../ui/objectHierarchyPanel";
 import { emitViewerImportState, registerViewerBridge } from "../viewer/viewerBridge";
 import {
@@ -206,6 +222,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
   };
 
   let fur: FurInstance | null = null;
+  let furInspectorDefaults: FurInspectorDefaults | null = null;
   let hullSurface: MaterialSurface | null = null;
   let rebuildGeneration = 0;
   const furDiffuseCache = new Map<string, BaseTexture>();
@@ -284,6 +301,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
 
   function applyLiveFurSettings(): void {
     if (!fur || !live.enabled) return;
+    live.settings.furSpeed = clampFurSpeed(live.settings.furSpeed);
     fur.update({
       shellLift: live.settings.shellLift,
       furAngle: live.settings.furAngle,
@@ -292,6 +310,15 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       furSpeed: live.settings.furSpeed,
       furGravity: live.settings.furGravity,
     });
+  }
+
+  function syncPreviewFurSliders(): void {
+    if (!panel) return;
+    const s = live.settings;
+    setRange(panel, "fur-speed", "fur-speed-val", s.furSpeed, (v) => String(Math.round(v)));
+    setRange(panel, "fur-angle", "fur-angle-val", s.furAngle, (v) => v.toFixed(2));
+    setRange(panel, "fur-density", "fur-density-val", s.furDensity, (v) => String(Math.round(v)));
+    setRange(panel, "fur-gravity-y", "fur-gravity-y-val", s.furGravity.y, (v) => v.toFixed(2));
   }
 
   function meshesForCameraFrame(): AbstractMesh[] {
@@ -374,6 +401,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     const generation = ++rebuildGeneration;
     fur?.dispose();
     fur = null;
+    furInspectorDefaults = null;
 
     if (!hullMesh) {
       if (statsEl) statsEl.textContent = "";
@@ -396,6 +424,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       }
       refreshCameraConstraints();
       refreshViewportPerfIndicator();
+      pushImportState();
       return;
     }
 
@@ -434,6 +463,11 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       return;
     }
 
+    furInspectorDefaults = snapshotFurInspectorDefaults(
+      fur.material,
+      hullPbrMaterial?.bumpTexture ?? null,
+    );
+
     const shellNote = importedLooksLikeBlenderShells ? " · hull only (multi-mesh GLB)" : "";
     if (statsEl) {
       const capped = effectiveQuality !== live.settings.quality ? ` (capped to ${effectiveQuality})` : "";
@@ -446,6 +480,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     }
     refreshCameraConstraints();
     refreshViewportPerfIndicator();
+    pushImportState();
   }
 
   function syncPbrProfileUi(): void {
@@ -481,10 +516,19 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     }
   }
 
+  const hierarchyDisplayRoots = (): AbstractMesh[] => {
+    const roots = importRoots.filter((m) => !m.isDisposed());
+    if (live.enabled && fur && hullMesh && !hullMesh.isDisposed()) {
+      return [hullMesh];
+    }
+    return roots;
+  };
+
   const pushImportState = (): void => {
     emitViewerImportState({
-      roots: importRoots.filter((m) => !m.isDisposed()),
+      roots: hierarchyDisplayRoots(),
       fileName: currentModelFileName,
+      furEnabled: live.enabled && !!fur,
     });
   };
 
@@ -511,12 +555,51 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
 
   registerViewerBridge({
     getImportState: () => ({
-      roots: importRoots.filter((m) => !m.isDisposed()),
+      roots: hierarchyDisplayRoots(),
       fileName: currentModelFileName,
+      furEnabled: live.enabled && !!fur,
+    }),
+    getFurState: () => ({
+      enabled: live.enabled && !!fur,
+      hullUniqueId: hullMesh?.uniqueId ?? null,
+      masterMaterial: fur?.material ?? null,
+      shellCount: fur?.shells.length ?? 0,
     }),
     findNodeByUniqueId,
     selectByUniqueId,
     clearSelection: clearHierarchySelection,
+    syncFurMaterials: () => {
+      if (!fur) return;
+      const m = fur.material;
+      const speed = clampFurSpeed(m.furSpeed);
+      if (speed !== m.furSpeed) {
+        m.furSpeed = speed;
+        m.furTime = 0;
+      }
+      live.settings.furSpeed = speed;
+      live.settings.furAngle = m.furAngle;
+      live.settings.furDensity = m.furDensity;
+      live.settings.furGravity = m.furGravity.clone();
+      syncShellMaterials(fur.shells, m);
+      m.updateFur();
+      scene.resetCachedMaterial();
+      syncPreviewFurSliders();
+    },
+    getFurInspectorDefaults: () => furInspectorDefaults,
+    canRestoreFurSlot: (slotId: FurInspectorSlotId) => canRestoreFurSlot(furInspectorDefaults, slotId),
+    restoreFurInspectorSlot: (slotId: FurInspectorSlotId) => {
+      if (!fur || !furInspectorDefaults) return false;
+      return restoreFurSlot(scene, fur.material, fur.shells, furInspectorDefaults, slotId);
+    },
+    restoreFurInspectorProperties: () => {
+      if (!fur || !furInspectorDefaults) return;
+      restoreFurProperties(fur.material, fur.shells, furInspectorDefaults);
+      live.settings.furAngle = furInspectorDefaults.furAngle;
+      live.settings.furDensity = furInspectorDefaults.furDensity;
+      live.settings.furSpeed = furInspectorDefaults.furSpeed;
+      live.settings.furGravity = furInspectorDefaults.furGravity.clone();
+      applyLiveFurSettings();
+    },
   });
 
   initObjectHierarchyPanel();

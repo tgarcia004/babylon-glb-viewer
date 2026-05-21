@@ -9,6 +9,8 @@ import { renderMaterialInspector } from "./materialInspectorPanel";
 import { getViewerBridge, onViewerImportStateChanged } from "../viewer/viewerBridge";
 
 function kindLabel(kind: HierarchyNode["kind"]): string {
+  if (kind === "fur-hull") return "Fur hull";
+  if (kind === "fur-shell") return "Fur shell";
   if (kind === "mesh") return "Mesh";
   if (kind === "empty") return "Empty mesh";
   return "Transform";
@@ -173,7 +175,13 @@ function renderTree(forest: HierarchyNode[]): void {
 
   const total = countHierarchyNodes(forest);
   if (summary) {
-    summary.textContent = `${total} node${total === 1 ? "" : "s"} · ${forest.length} root${forest.length === 1 ? "" : "s"}`;
+    const bridge = getViewerBridge();
+    const fur = bridge?.getFurState();
+    if (fur?.enabled) {
+      summary.textContent = `Fur preview · ${fur.shellCount} shell${fur.shellCount === 1 ? "" : "s"} · ${total} node${total === 1 ? "" : "s"}`;
+    } else {
+      summary.textContent = `${total} node${total === 1 ? "" : "s"} · ${forest.length} root${forest.length === 1 ? "" : "s"}`;
+    }
   }
 }
 
@@ -197,7 +205,15 @@ function refreshFromBridge(): void {
   lastForest = buildHierarchyForest(state.roots);
   renderTree(lastForest);
 
-  if (lastForest.length === 0 && detail) {
+  if (selectedNodeId) {
+    const node = findHierarchyNode(lastForest, Number(selectedNodeId));
+    if (node) {
+      showNodeDetail(node);
+    } else {
+      setSelectedNodeId(null);
+      detail?.replaceChildren();
+    }
+  } else if (lastForest.length === 0 && detail) {
     detail.replaceChildren();
   }
 }

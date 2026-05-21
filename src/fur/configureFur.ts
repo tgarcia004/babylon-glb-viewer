@@ -12,6 +12,10 @@ import type { BaseTexture } from "@babylonjs/core/Materials/Textures/baseTexture
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import type { MaterialSurface } from "../material/extractMaterialSurface";
 
+/** Babylon divides deltaTime by furSpeed — values below this break or explode the shader. */
+export const FUR_SPEED_MIN = 50;
+export const FUR_SPEED_MAX = 600;
+
 export const FUR_DEFAULTS = {
   /** UI "Fur length" — how far shell layers sit above the hull (mesh-scaled). */
   shellLift: 0.05,
@@ -24,6 +28,22 @@ export const FUR_DEFAULTS = {
   furGravity: new Vector3(0, -1, 0),
   quality: 12,
 } as const;
+
+export function clampFurSpeed(speed: number): number {
+  return Math.max(FUR_SPEED_MIN, Math.min(FUR_SPEED_MAX, speed));
+}
+
+/** Map engine furSpeed to a 0–100 “animation speed” slider (higher = faster motion). */
+export function furSpeedToUiPercent(speed: number): number {
+  const clamped = clampFurSpeed(speed);
+  return Math.round(((FUR_SPEED_MAX - clamped) / (FUR_SPEED_MAX - FUR_SPEED_MIN)) * 100);
+}
+
+/** Map 0–100 UI speed back to engine furSpeed (higher furSpeed = slower motion). */
+export function uiPercentToFurSpeed(percent: number): number {
+  const t = Math.max(0, Math.min(100, percent)) / 100;
+  return Math.round(FUR_SPEED_MAX - t * (FUR_SPEED_MAX - FUR_SPEED_MIN));
+}
 
 /** Keep shell count reasonable for dense imported meshes. */
 export function capFurQuality(mesh: Mesh, requested: number): number {
@@ -106,7 +126,8 @@ function applyFurAlphaMask(
   fur.transparencyMode = Material.MATERIAL_ALPHATEST;
 }
 
-function syncShellMaterials(shells: Mesh[], fur: FurMaterial): void {
+/** Keep per-shell FurMaterial copies in sync with the hull material. */
+export function syncShellMaterials(shells: Mesh[], fur: FurMaterial): void {
   for (let i = 0; i < shells.length; i++) {
     const mat = shells[i].material as FurMaterial | null;
     if (!mat) continue;
@@ -114,6 +135,16 @@ function syncShellMaterials(shells: Mesh[], fur: FurMaterial): void {
     mat.alpha = fur.alpha;
     mat.transparencyMode = fur.transparencyMode;
     mat.diffuseColor = fur.diffuseColor.clone();
+    mat.diffuseTexture = fur.diffuseTexture;
+    if (fur.heightTexture) {
+      mat.heightTexture = fur.heightTexture;
+    }
+    mat.furTexture = fur.furTexture;
+    mat.furAngle = fur.furAngle;
+    mat.furDensity = fur.furDensity;
+    mat.furSpeed = clampFurSpeed(fur.furSpeed);
+    mat.furGravity = fur.furGravity.clone();
+    mat.furTime = fur.furTime;
   }
 }
 
@@ -141,7 +172,7 @@ export function applyFur(
   const quality = capFurQuality(mesh, settings.quality);
   fur.furSpacing = computeFurSpacing(mesh, settings.shellLift, settings.stackDepth, quality);
   fur.furDensity = settings.furDensity;
-  fur.furSpeed = settings.furSpeed;
+  fur.furSpeed = clampFurSpeed(settings.furSpeed);
   fur.furGravity = settings.furGravity.clone();
 
   mesh.material = fur;
@@ -163,7 +194,7 @@ export function applyFur(
       capFurQuality(mesh, current.quality),
     );
     fur.furDensity = current.furDensity;
-    fur.furSpeed = current.furSpeed;
+    fur.furSpeed = clampFurSpeed(current.furSpeed);
     fur.furGravity = current.furGravity.clone();
     fur.updateFur();
   };

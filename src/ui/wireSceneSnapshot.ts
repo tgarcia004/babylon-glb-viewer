@@ -27,7 +27,7 @@ function preventFileDragDefaults(e: DragEvent): void {
   e.stopPropagation();
 }
 
-function setRange(panel: HTMLElement, inputId: string, valId: string, value: number, format: (v: number) => string): void {
+export function setRange(panel: HTMLElement, inputId: string, valId: string, value: number, format: (v: number) => string): void {
   const input = panel.querySelector<HTMLInputElement>(`#${inputId}`);
   const valEl = panel.querySelector<HTMLElement>(`#${valId}`);
   if (!input) return;

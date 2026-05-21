@@ -1,12 +1,28 @@
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Material } from "@babylonjs/core/Materials/material";
 import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import type { BaseTexture } from "@babylonjs/core/Materials/Textures/baseTexture";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { GetTextureDataAsync } from "@babylonjs/core/Misc/textureTools";
 import type { Node } from "@babylonjs/core/node";
+import { FurMaterial } from "@babylonjs/materials/fur";
 
-import { getMaterialEditTargets, isEditablePbr, type MaterialEditTarget } from "../material/materialEditTargets";
+import {
+  getMaterialEditTargets,
+  isEditableFur,
+  isEditablePbr,
+  type MaterialEditTarget,
+} from "../material/materialEditTargets";
+import type { FurInspectorSlotId } from "../fur/furInspectorDefaults";
+import {
+  clampFurSpeed,
+  furSpeedToUiPercent,
+  uiPercentToFurSpeed,
+} from "../fur/configureFur";
+import { getViewerBridge } from "../viewer/viewerBridge";
+
+type InspectorRefresh = () => void;
 
 interface TextureSlotDef {
   id: string;
@@ -14,6 +30,44 @@ interface TextureSlotDef {
   getTexture: (mat: PBRMaterial) => BaseTexture | null;
   setTexture: (mat: PBRMaterial, tex: Texture | null) => void;
 }
+
+interface FurTextureSlotDef {
+  id: string;
+  label: string;
+  getTexture: (mat: FurMaterial) => BaseTexture | null;
+  setTexture: (mat: FurMaterial, tex: Texture) => void;
+  allowReplace: boolean;
+}
+
+const FUR_TEXTURE_SLOTS: FurTextureSlotDef[] = [
+  {
+    id: "diffuse",
+    label: "Diffuse / albedo",
+    getTexture: (m) => m.diffuseTexture,
+    setTexture: (m, t) => {
+      m.diffuseTexture = t;
+    },
+    allowReplace: true,
+  },
+  {
+    id: "height",
+    label: "Height",
+    getTexture: (m) => m.heightTexture,
+    setTexture: (m, t) => {
+      m.heightTexture = t;
+    },
+    allowReplace: true,
+  },
+  {
+    id: "fur-noise",
+    label: "Fur noise",
+    getTexture: (m) => m.furTexture,
+    setTexture: (m, t) => {
+      m.furTexture = t as FurMaterial["furTexture"];
+    },
+    allowReplace: false,
+  },
+];
 
 const PBR_TEXTURE_SLOTS: TextureSlotDef[] = [
   {
@@ -85,6 +139,11 @@ function markMaterialDirty(mat: Material): void {
   mat.getScene()?.resetCachedMaterial();
 }
 
+function syncFurMaterial(mat: FurMaterial): void {
+  markMaterialDirty(mat);
+  getViewerBridge()?.syncFurMaterials();
+}
+
 async function paintTextureThumbFromBuffer(container: HTMLElement, tex: BaseTexture): Promise<void> {
   const placeholder = document.createElement("span");
   placeholder.className = "mat-slot-thumb-empty";
@@ -135,6 +194,100 @@ async function paintTextureThumb(container: HTMLElement, tex: BaseTexture | null
   }
 
   await paintTextureThumbFromBuffer(container, tex);
+}
+
+function createFurDefaultButton(slotId: FurInspectorSlotId, onRestored: InspectorRefresh): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "mat-slot-btn mat-slot-btn--ghost";
+  btn.textContent = "Default";
+  const bridge = getViewerBridge();
+  btn.disabled = !bridge?.canRestoreFurSlot(slotId);
+  btn.title = btn.disabled ? "No default saved for this slot" : "Restore the texture from when fur was enabled";
+  btn.addEventListener("click", () => {
+    if (!getViewerBridge()?.restoreFurInspectorSlot(slotId)) return;
+    onRestored();
+  });
+  return btn;
+}
+
+function createFurTextureSlotCard(
+  mat: FurMaterial,
+  slot: FurTextureSlotDef,
+  onRestored: InspectorRefresh,
+): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "mat-slot-card";
+  card.dataset.slot = slot.id;
+
+  const thumb = document.createElement("div");
+  thumb.className = "mat-slot-thumb";
+  void paintTextureThumb(thumb, slot.getTexture(mat));
+
+  const label = document.createElement("span");
+  label.className = "mat-slot-label";
+  label.textContent = slot.label;
+
+  const texName = document.createElement("span");
+  texName.className = "mat-slot-texname";
+  const current = slot.getTexture(mat);
+  texName.textContent = current?.name || (slot.id === "fur-noise" ? "Procedural" : "No texture");
+  texName.title = current?.name || "";
+
+  const actions = document.createElement("div");
+  actions.className = "mat-slot-actions";
+
+  if (!slot.allowReplace) {
+    const actions = document.createElement("div");
+    actions.className = "mat-slot-actions";
+    actions.append(createFurDefaultButton(slot.id as FurInspectorSlotId, onRestored));
+    const note = document.createElement("span");
+    note.className = "hint mat-slot-readonly";
+    note.textContent = "Procedural noise";
+    card.append(thumb, label, texName, actions, note);
+    return card;
+  }
+
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = "image/*,.png,.jpg,.jpeg,.webp";
+  fileInput.hidden = true;
+
+  const replaceBtn = document.createElement("button");
+  replaceBtn.type = "button";
+  replaceBtn.className = "mat-slot-btn";
+  replaceBtn.textContent = "Replace";
+
+  replaceBtn.addEventListener("click", () => fileInput.click());
+
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    fileInput.value = "";
+    if (!file) return;
+
+    const scene = mat.getScene();
+    if (!scene) return;
+
+    const objectUrl = URL.createObjectURL(file);
+    const tex = new Texture(
+      objectUrl,
+      scene,
+      false,
+      false,
+      Texture.TRILINEAR_SAMPLINGMODE,
+      () => URL.revokeObjectURL(objectUrl),
+      () => URL.revokeObjectURL(objectUrl),
+    );
+    tex.name = file.name;
+    slot.setTexture(mat, tex);
+    syncFurMaterial(mat);
+    texName.textContent = file.name;
+    void paintTextureThumb(thumb, tex);
+  });
+
+  actions.append(replaceBtn, createFurDefaultButton(slot.id as FurInspectorSlotId, onRestored));
+  card.append(thumb, label, texName, actions, fileInput);
+  return card;
 }
 
 function createTextureSlotCard(mat: PBRMaterial, slot: TextureSlotDef): HTMLElement {
@@ -320,7 +473,84 @@ function createPbrPropertyPanel(mat: PBRMaterial): HTMLElement {
   return panel;
 }
 
-function createMaterialGraph(target: MaterialEditTarget, showMeshLabel: boolean): HTMLElement {
+function createFurPropertyPanel(mat: FurMaterial, onRestored: InspectorRefresh): HTMLElement {
+  const panel = document.createElement("div");
+  panel.className = "mat-props-panel";
+
+  const resetRow = document.createElement("div");
+  resetRow.className = "mat-fur-defaults-row";
+  const resetBtn = document.createElement("button");
+  resetBtn.type = "button";
+  resetBtn.className = "mat-slot-btn";
+  resetBtn.textContent = "Reset properties to default";
+  resetBtn.disabled = !getViewerBridge()?.getFurInspectorDefaults();
+  resetBtn.addEventListener("click", () => {
+    getViewerBridge()?.restoreFurInspectorProperties();
+    onRestored();
+  });
+  resetRow.appendChild(resetBtn);
+  panel.appendChild(resetRow);
+
+  const colorRow = document.createElement("div");
+  colorRow.className = "mat-prop-row";
+  const colorLbl = document.createElement("label");
+  colorLbl.className = "mat-prop-label";
+  colorLbl.textContent = "Diffuse color";
+  const colorInput = document.createElement("input");
+  colorInput.type = "color";
+  colorInput.className = "mat-prop-color";
+  colorInput.value = colorToHex(mat.diffuseColor);
+  colorInput.addEventListener("input", () => {
+    mat.diffuseColor = hexToColor3(colorInput.value);
+    syncFurMaterial(mat);
+  });
+  colorRow.append(colorLbl, colorInput);
+
+  panel.append(
+    colorRow,
+    createScalarControl("Fur angle", mat.furAngle, 0, Math.PI, 0.01, (v) => v.toFixed(2), (v) => {
+      mat.furAngle = v;
+      syncFurMaterial(mat);
+    }),
+    createScalarControl("Fur density", mat.furDensity, 0, 80, 1, (v) => String(Math.round(v)), (v) => {
+      mat.furDensity = v;
+      syncFurMaterial(mat);
+    }),
+    createScalarControl(
+      "Animation speed",
+      furSpeedToUiPercent(mat.furSpeed),
+      0,
+      100,
+      1,
+      (v) => `${Math.round(v)}%`,
+      (uiPercent) => {
+        const next = uiPercentToFurSpeed(uiPercent);
+        if (next !== mat.furSpeed) {
+          mat.furTime = 0;
+        }
+        mat.furSpeed = next;
+        mat.updateFur();
+        syncFurMaterial(mat);
+      },
+    ),
+    createScalarControl("Gravity Y", mat.furGravity.y, -2, 2, 0.05, (v) => v.toFixed(2), (v) => {
+      mat.furGravity = new Vector3(mat.furGravity.x, v, mat.furGravity.z);
+      syncFurMaterial(mat);
+    }),
+    createScalarControl("Alpha", mat.alpha, 0, 1, 0.01, (v) => v.toFixed(2), (v) => {
+      mat.alpha = v;
+      syncFurMaterial(mat);
+    }),
+  );
+
+  return panel;
+}
+
+function createMaterialGraph(
+  target: MaterialEditTarget,
+  showMeshLabel: boolean,
+  onFurRestored: InspectorRefresh,
+): HTMLElement {
   const { material, meshLabel } = target;
   const block = document.createElement("div");
   block.className = "mat-inspector-block";
@@ -348,7 +578,32 @@ function createMaterialGraph(target: MaterialEditTarget, showMeshLabel: boolean)
 
   block.append(root, connector);
 
-  if (isEditablePbr(material)) {
+  if (isEditableFur(material)) {
+    const slotsTitle = document.createElement("p");
+    slotsTitle.className = "mat-graph-slots-title";
+    slotsTitle.textContent = "Fur texture slots";
+
+    const grid = document.createElement("div");
+    grid.className = "mat-slot-grid";
+    const refreshFurUi = () => {
+      onFurRestored();
+    };
+
+    for (const slot of FUR_TEXTURE_SLOTS) {
+      grid.appendChild(createFurTextureSlotCard(material, slot, refreshFurUi));
+    }
+
+    const propsTitle = document.createElement("p");
+    propsTitle.className = "mat-graph-slots-title";
+    propsTitle.textContent = "Fur properties";
+
+    const furNote = document.createElement("p");
+    furNote.className = "hint mat-inspector-hint";
+    furNote.textContent =
+      "Edits apply to the hull and every fur shell layer. Animation speed: lower % = calmer motion.";
+
+    block.append(slotsTitle, grid, propsTitle, furNote, createFurPropertyPanel(material, refreshFurUi));
+  } else if (isEditablePbr(material)) {
     const slotsTitle = document.createElement("p");
     slotsTitle.className = "mat-graph-slots-title";
     slotsTitle.textContent = "Texture slots";
@@ -376,6 +631,8 @@ function createMaterialGraph(target: MaterialEditTarget, showMeshLabel: boolean)
 
 /** Visual material inspector (node cards + texture replace + PBR sliders). */
 export function renderMaterialInspector(container: HTMLElement, sceneNode: Node | null): void {
+  container.querySelector(".mat-inspector")?.remove();
+
   const section = document.createElement("div");
   section.className = "mat-inspector";
 
@@ -411,8 +668,9 @@ export function renderMaterialInspector(container: HTMLElement, sceneNode: Node 
   const graph = document.createElement("div");
   graph.className = "mat-inspector-graph";
   const showMeshLabels = targets.length > 1;
+  const refreshInspector = () => renderMaterialInspector(container, sceneNode);
   for (const target of targets) {
-    graph.appendChild(createMaterialGraph(target, showMeshLabels));
+    graph.appendChild(createMaterialGraph(target, showMeshLabels, refreshInspector));
   }
   section.appendChild(graph);
   container.appendChild(section);

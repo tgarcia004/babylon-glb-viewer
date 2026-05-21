@@ -1,16 +1,36 @@
+import type { FurMaterial } from "@babylonjs/materials/fur";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { Node } from "@babylonjs/core/node";
+
+import type { FurInspectorDefaults, FurInspectorSlotId } from "../fur/furInspectorDefaults";
 
 export interface ViewerImportState {
   roots: AbstractMesh[];
   fileName: string | null;
+  /** When true, the outliner shows the fur hull + shell stack only. */
+  furEnabled: boolean;
+}
+
+export interface ViewerFurState {
+  enabled: boolean;
+  hullUniqueId: number | null;
+  masterMaterial: FurMaterial | null;
+  shellCount: number;
 }
 
 export interface ViewerBridge {
   getImportState(): ViewerImportState;
+  getFurState(): ViewerFurState;
   findNodeByUniqueId(uniqueId: number): Node | null;
   selectByUniqueId(uniqueId: number): void;
   clearSelection(): void;
+  /** After editing fur material textures / colors in the inspector. */
+  syncFurMaterials(): void;
+  /** Baselines from when fur was last built (for Edit Object “Default” actions). */
+  getFurInspectorDefaults(): FurInspectorDefaults | null;
+  canRestoreFurSlot(slotId: FurInspectorSlotId): boolean;
+  restoreFurInspectorSlot(slotId: FurInspectorSlotId): boolean;
+  restoreFurInspectorProperties(): void;
 }
 
 type ImportListener = (state: ViewerImportState) => void;

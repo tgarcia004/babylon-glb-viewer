@@ -1,9 +1,11 @@
+import { Material } from "@babylonjs/core/Materials/material";
 import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Node } from "@babylonjs/core/node";
+import { Tags } from "@babylonjs/core/Misc/tags";
 
-export type HierarchyNodeKind = "transform" | "mesh" | "empty";
+export type HierarchyNodeKind = "transform" | "mesh" | "empty" | "fur-shell" | "fur-hull";
 
 export interface HierarchyNode {
   id: string;
@@ -18,14 +20,40 @@ export interface HierarchyNode {
   children: HierarchyNode[];
 }
 
+function isFurShellMaterial(mat: Material | null | undefined): boolean {
+  return !!mat && Tags.MatchesQuery(mat, "furShellMaterial");
+}
+
 function nodeKind(node: Node): HierarchyNodeKind {
   if (node instanceof Mesh) {
+    const mat = node.material;
+    if (isFurShellMaterial(mat)) {
+      return "fur-shell";
+    }
+    if (mat?.getClassName() === "FurMaterial") {
+      return "fur-hull";
+    }
     return node.getTotalVertices() > 0 ? "mesh" : "empty";
   }
   if (node instanceof AbstractMesh) {
     return "empty";
   }
   return "transform";
+}
+
+function displayName(node: Node): string {
+  const base = node.name || "(unnamed)";
+  if (node instanceof Mesh && isFurShellMaterial(node.material)) {
+    const offset = (node.material as { furOffset?: number }).furOffset;
+    if (offset != null) {
+      return `Fur shell ${Math.round(offset * 100)}%`;
+    }
+    return `Fur shell · ${base}`;
+  }
+  if (node instanceof Mesh && node.material?.getClassName() === "FurMaterial") {
+    return `${base} · fur hull`;
+  }
+  return base;
 }
 
 function meshStats(node: Node): { triangleCount: number; vertexCount: number; materialName: string | null } {
@@ -58,7 +86,7 @@ function buildNode(node: Node): HierarchyNode {
   return {
     id: String(node.uniqueId),
     uniqueId: node.uniqueId,
-    name: node.name || "(unnamed)",
+    name: displayName(node),
     kind: nodeKind(node),
     visible: node instanceof AbstractMesh ? node.isVisible : true,
     enabled: isVisibleInScene(node),

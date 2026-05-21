@@ -1542,6 +1542,30 @@ body.panel-resizing * {
   align-self: flex-start;
 }
 
+.mat-slot-readonly {
+  font-size: 10px;
+  text-align: center;
+}
+
+.mat-fur-defaults-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.mat-fur-defaults-row .mat-slot-btn {
+  width: auto;
+  padding: 6px 10px;
+}
+
+.hierarchy-row.is-selected {
+  background: color-mix(in srgb, var(--accent-dim) 55%, transparent);
+}
+
+.hierarchy-meta {
+  color: var(--accent-text);
+}
+
 .panel-brand {
   display: flex;
   align-items: center;
