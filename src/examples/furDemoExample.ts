@@ -25,12 +25,17 @@ import {
   applyFur,
   capFurQuality,
   clampFurSpeed,
+  furSpeedForEngine,
+  normalizeStoredFurSpeed,
   FUR_DEFAULTS,
   syncShellMaterials,
   type FurInstance,
   type FurSettings,
 } from "../fur/configureFur";
-import { applyFurDensityMask as applyFurDensityMaskToMaterial } from "../fur/furDensityMask";
+import {
+  applyFurDensityMask as applyFurDensityMaskToMaterial,
+  computeMaskFurLength,
+} from "../fur/furDensityMask";
 import {
   captureFurEditorSnapshot,
   furEditorSnapshotFromInspectorDefaults,
@@ -323,6 +328,10 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       furSpeed: live.settings.furSpeed,
       furGravity: live.settings.furGravity,
     });
+    if (fur.material.heightTexture) {
+      fur.material.furLength = computeMaskFurLength(live.settings.shellLift);
+      fur.material.updateFur();
+    }
   }
 
   async function refreshFurMaskLength(): Promise<void> {
@@ -493,7 +502,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       applyLiveFurSettings();
       live.settings.furAngle = fur.material.furAngle;
       live.settings.furDensity = fur.material.furDensity;
-      live.settings.furSpeed = clampFurSpeed(fur.material.furSpeed);
+      live.settings.furSpeed = normalizeStoredFurSpeed(fur.material.furSpeed);
       live.settings.furGravity = fur.material.furGravity.clone();
     } else {
       const autoMask = furDensityMaskTexture ?? hullPbrMaterial?.bumpTexture ?? null;
@@ -623,10 +632,10 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     syncFurMaterials: () => {
       if (!fur) return;
       const m = fur.material;
-      const speed = clampFurSpeed(m.furSpeed);
-      if (speed !== m.furSpeed) {
-        m.furSpeed = speed;
-        m.furTime = 0;
+      const speed = normalizeStoredFurSpeed(m.furSpeed);
+      const engineSpeed = furSpeedForEngine(speed);
+      if (engineSpeed !== m.furSpeed) {
+        m.furSpeed = engineSpeed;
       }
       live.settings.furSpeed = speed;
       live.settings.furAngle = m.furAngle;
@@ -659,7 +668,6 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     setFurShellLift: (value) => {
       live.settings.shellLift = value;
       applyLiveFurSettings();
-      void refreshFurMaskLength();
     },
     getFurStackDepth: () => live.settings.stackDepth,
     setFurStackDepth: (value) => {

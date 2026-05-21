@@ -10,7 +10,12 @@ import {
   type TextureUvState,
 } from "../material/materialUv";
 import type { FurInspectorDefaults } from "./furInspectorDefaults";
-import { clampFurSpeed, syncShellMaterials } from "./configureFur";
+import {
+  clampFurSpeed,
+  furSpeedForEngine,
+  normalizeStoredFurSpeed,
+  syncShellMaterials,
+} from "./configureFur";
 
 export type { TextureUvState } from "../material/materialUv";
 
@@ -54,7 +59,7 @@ export function captureFurEditorSnapshot(hull: FurMaterial): FurEditorSnapshot {
     diffuseColor: hull.diffuseColor.clone(),
     furAngle: hull.furAngle,
     furDensity: hull.furDensity,
-    furSpeed: clampFurSpeed(hull.furSpeed),
+    furSpeed: normalizeStoredFurSpeed(hull.furSpeed),
     furGravity: hull.furGravity.clone(),
     alpha: hull.alpha,
     transparencyMode: hull.transparencyMode ?? 0,
@@ -75,7 +80,7 @@ export function restoreFurEditorSnapshot(
   hull.diffuseColor = snapshot.diffuseColor.clone();
   hull.furAngle = snapshot.furAngle;
   hull.furDensity = snapshot.furDensity;
-  hull.furSpeed = clampFurSpeed(snapshot.furSpeed);
+  hull.furSpeed = furSpeedForEngine(snapshot.furSpeed);
   hull.furGravity = snapshot.furGravity.clone();
   hull.alpha = snapshot.alpha;
   hull.transparencyMode = snapshot.transparencyMode;

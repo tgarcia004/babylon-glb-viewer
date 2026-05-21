@@ -8,7 +8,7 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { FurMaterial } from "@babylonjs/materials/fur";
 
-import { syncShellMaterials } from "./configureFur";
+import { normalizedShellLift, syncShellMaterials } from "./configureFur";
 
 const FUR_NOISE_SIZE = 256;
 
@@ -29,8 +29,8 @@ function maskSampleMode(mask: BaseTexture): boolean {
 
 /** Per-vertex fur length scale when a grayscale mask is bound (heightTexture). */
 export function computeMaskFurLength(shellLift: number, strength = 1): number {
-  const t = Math.max(0, Math.min(1, strength));
-  return Math.min(2, Math.max(0, shellLift * 20 * t));
+  const t = normalizedShellLift(shellLift) * Math.max(0, Math.min(1, strength));
+  return Math.min(2, t * 2);
 }
 
 /**

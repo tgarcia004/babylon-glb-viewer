@@ -16,9 +16,13 @@ import {
 } from "../material/materialEditTargets";
 import type { FurInspectorSlotId } from "../fur/furInspectorDefaults";
 import {
-  clampFurSpeed,
+  furSpeedForEngine,
   furSpeedToUiPercent,
+  isFurAnimationOff,
+  normalizeStoredFurSpeed,
+  shellLiftToUiPercent,
   uiPercentToFurSpeed,
+  uiPercentToShellLift,
 } from "../fur/configureFur";
 import {
   applyUniversalMaterialUv,
@@ -534,6 +538,7 @@ function createScalarControlOnCommit(
   format: (v: number) => string,
   onCommit: (v: number) => void,
   lockScrollWhileDrag = false,
+  onPreview?: (v: number) => void,
 ): HTMLElement {
   const row = document.createElement("div");
   row.className = "mat-prop-row";
@@ -557,6 +562,7 @@ function createScalarControlOnCommit(
   input.addEventListener("input", () => {
     const v = parseFloat(input.value);
     val.textContent = format(v);
+    onPreview?.(v);
   });
   input.addEventListener("change", () => {
     onCommit(parseFloat(input.value));
@@ -736,10 +742,18 @@ function createFurPropertyPanel(mat: FurMaterial, onRestored: InspectorRefresh):
             },
             true,
           ),
-          createScalarControl("Fur length", bridge.getFurShellLift(), 0, 1.5, 0.001, (v) => v.toFixed(3), (v) => {
-            bridge.setFurShellLift(v);
-            syncFurMaterial(mat);
-          }),
+          createScalarControl(
+            "Fur length",
+            shellLiftToUiPercent(bridge.getFurShellLift()),
+            0,
+            100,
+            1,
+            (v) => `${Math.round(v)}%`,
+            (p) => {
+              bridge.setFurShellLift(uiPercentToShellLift(p));
+              syncFurMaterial(mat);
+            },
+          ),
           createScalarControl("Stack depth", bridge.getFurStackDepth(), 0, 3, 0.01, (v) => v.toFixed(2), (v) => {
             bridge.setFurStackDepth(v);
             syncFurMaterial(mat);
@@ -763,10 +777,11 @@ function createFurPropertyPanel(mat: FurMaterial, onRestored: InspectorRefresh):
       (v) => `${Math.round(v)}%`,
       (uiPercent) => {
         const next = uiPercentToFurSpeed(uiPercent);
-        if (next !== mat.furSpeed) {
+        const prev = normalizeStoredFurSpeed(mat.furSpeed);
+        if (next !== prev && !isFurAnimationOff(next) && !isFurAnimationOff(prev)) {
           mat.furTime = 0;
         }
-        mat.furSpeed = next;
+        mat.furSpeed = furSpeedForEngine(next);
         mat.updateFur();
         syncFurMaterial(mat);
       },

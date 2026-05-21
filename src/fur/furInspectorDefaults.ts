@@ -7,7 +7,12 @@ import { FurMaterial } from "@babylonjs/materials/fur";
 
 import { applyUniversalMaterialUv, readUniversalMaterialUv, type TextureUvState } from "../material/materialUv";
 import { applyFurDensityMask } from "./furDensityMask";
-import { clampFurSpeed, syncShellMaterials } from "./configureFur";
+import {
+  clampFurSpeed,
+  furSpeedForEngine,
+  normalizeStoredFurSpeed,
+  syncShellMaterials,
+} from "./configureFur";
 
 export type FurInspectorSlotId = "diffuse" | "fur-mask" | "fur-noise";
 
@@ -82,7 +87,7 @@ export function restoreFurProperties(hull: FurMaterial, shells: Mesh[], defaults
   hull.diffuseColor = defaults.diffuseColor.clone();
   hull.furAngle = defaults.furAngle;
   hull.furDensity = defaults.furDensity;
-  hull.furSpeed = clampFurSpeed(defaults.furSpeed);
+  hull.furSpeed = furSpeedForEngine(defaults.furSpeed);
   hull.furTime = 0;
   hull.furGravity = defaults.furGravity.clone();
   hull.alpha = defaults.alpha;
@@ -108,7 +113,7 @@ export function snapshotFurInspectorDefaults(
     diffuseColor: hull.diffuseColor.clone(),
     furAngle: hull.furAngle,
     furDensity: hull.furDensity,
-    furSpeed: clampFurSpeed(hull.furSpeed),
+    furSpeed: normalizeStoredFurSpeed(hull.furSpeed),
     furGravity: hull.furGravity.clone(),
     alpha: hull.alpha,
     transparencyMode: hull.transparencyMode ?? 0,

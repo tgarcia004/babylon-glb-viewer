@@ -12,9 +12,18 @@ import type { BaseTexture } from "@babylonjs/core/Materials/Textures/baseTexture
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import type { MaterialSurface } from "../material/extractMaterialSurface";
 
+/** Stored setting: animation paused (maps to Infinity on the material). */
+export const FUR_SPEED_OFF = 0;
+
 /** Babylon divides deltaTime by furSpeed — values below this break or explode the shader. */
 export const FUR_SPEED_MIN = 50;
 export const FUR_SPEED_MAX = 600;
+
+/** Max stored shellLift at 100% on the Fur length slider. */
+export const FUR_SHELL_LIFT_MAX = 1.5;
+
+/** UI slider curve (>1 = finer control at low %, full length only near 100%). */
+export const FUR_SHELL_LIFT_CURVE = 2.5;
 
 export const FUR_DEFAULTS = {
   /** UI "Fur length" — how far shell layers sit above the hull (mesh-scaled). */
@@ -29,19 +38,65 @@ export const FUR_DEFAULTS = {
   quality: 12,
 } as const;
 
+/** 0–1 normalized shellLift for mask length and spacing helpers. */
+export function normalizedShellLift(shellLift: number): number {
+  return Math.max(0, Math.min(1, shellLift / FUR_SHELL_LIFT_MAX));
+}
+
+/** 0–100 UI percent for the Fur length slider (inverse of curved mapping). */
+export function shellLiftToUiPercent(shellLift: number): number {
+  const t = normalizedShellLift(shellLift);
+  if (t <= 0) return 0;
+  return Math.round(Math.pow(t, 1 / FUR_SHELL_LIFT_CURVE) * 100);
+}
+
+export function uiPercentToShellLift(percent: number): number {
+  const p = Math.max(0, Math.min(100, percent)) / 100;
+  const lift = Math.pow(p, FUR_SHELL_LIFT_CURVE) * FUR_SHELL_LIFT_MAX;
+  return Math.round(lift * 1000) / 1000;
+}
+
+export function isFurAnimationOff(speed: number): boolean {
+  return speed <= FUR_SPEED_OFF || !Number.isFinite(speed);
+}
+
+/** Logical fur speed for settings / snapshots (0 = off, otherwise 50–600). */
 export function clampFurSpeed(speed: number): number {
+  if (isFurAnimationOff(speed)) {
+    return FUR_SPEED_OFF;
+  }
   return Math.max(FUR_SPEED_MIN, Math.min(FUR_SPEED_MAX, speed));
+}
+
+/** Read logical speed from a FurMaterial (Infinity on the mesh means off). */
+export function normalizeStoredFurSpeed(engineSpeed: number): number {
+  if (!Number.isFinite(engineSpeed)) {
+    return FUR_SPEED_OFF;
+  }
+  return clampFurSpeed(engineSpeed);
+}
+
+/** Value assigned to FurMaterial.furSpeed (Infinity freezes furTime). */
+export function furSpeedForEngine(storedSpeed: number): number {
+  return isFurAnimationOff(storedSpeed) ? Number.POSITIVE_INFINITY : clampFurSpeed(storedSpeed);
 }
 
 /** Map engine furSpeed to a 0–100 “animation speed” slider (higher = faster motion). */
 export function furSpeedToUiPercent(speed: number): number {
-  const clamped = clampFurSpeed(speed);
-  return Math.round(((FUR_SPEED_MAX - clamped) / (FUR_SPEED_MAX - FUR_SPEED_MIN)) * 100);
+  const stored = normalizeStoredFurSpeed(speed);
+  if (isFurAnimationOff(stored)) {
+    return 0;
+  }
+  return Math.round(((FUR_SPEED_MAX - stored) / (FUR_SPEED_MAX - FUR_SPEED_MIN)) * 100);
 }
 
-/** Map 0–100 UI speed back to engine furSpeed (higher furSpeed = slower motion). */
+/** Map 0–100 UI speed back to stored furSpeed (0 = off; higher % = faster motion). */
 export function uiPercentToFurSpeed(percent: number): number {
-  const t = Math.max(0, Math.min(100, percent)) / 100;
+  const p = Math.max(0, Math.min(100, percent));
+  if (p <= 0) {
+    return FUR_SPEED_OFF;
+  }
+  const t = p / 100;
   return Math.round(FUR_SPEED_MAX - t * (FUR_SPEED_MAX - FUR_SPEED_MIN));
 }
 
@@ -99,7 +154,7 @@ export function computeFurSpacing(
   const scale = meshShellScale(mesh);
   const q = Math.max(2, quality);
   const epsilon = scale * 4e-5;
-  const firstShellGap = shellLift * scale * 0.012 + epsilon;
+  const firstShellGap = normalizedShellLift(shellLift) * FUR_SHELL_LIFT_MAX * scale * 0.008 + epsilon;
   const stackExtra = stackDepth * scale * 0.045;
   return q * firstShellGap + stackExtra;
 }
@@ -147,7 +202,7 @@ export function syncShellMaterials(shells: Mesh[], fur: FurMaterial): void {
     mat.furTexture = fur.furTexture;
     mat.furAngle = fur.furAngle;
     mat.furDensity = fur.furDensity;
-    mat.furSpeed = clampFurSpeed(fur.furSpeed);
+    mat.furSpeed = furSpeedForEngine(normalizeStoredFurSpeed(fur.furSpeed));
     mat.furGravity = fur.furGravity.clone();
     mat.furTime = fur.furTime;
     mat.furLength = fur.furLength;
@@ -178,7 +233,7 @@ export function applyFur(
   const quality = capFurQuality(mesh, settings.quality);
   fur.furSpacing = computeFurSpacing(mesh, settings.shellLift, settings.stackDepth, quality);
   fur.furDensity = settings.furDensity;
-  fur.furSpeed = clampFurSpeed(settings.furSpeed);
+  fur.furSpeed = furSpeedForEngine(settings.furSpeed);
   fur.furGravity = settings.furGravity.clone();
 
   mesh.material = fur;
@@ -200,7 +255,7 @@ export function applyFur(
       capFurQuality(mesh, current.quality),
     );
     fur.furDensity = current.furDensity;
-    fur.furSpeed = clampFurSpeed(current.furSpeed);
+    fur.furSpeed = furSpeedForEngine(current.furSpeed);
     fur.furGravity = current.furGravity.clone();
     fur.updateFur();
   };
