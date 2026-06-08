@@ -252,8 +252,9 @@ function createFurDefaultButton(slotId: FurInspectorSlotId, onRestored: Inspecto
   btn.disabled = !bridge?.canRestoreFurSlot(slotId);
   btn.title = btn.disabled ? "No default saved for this slot" : "Restore the texture from when fur was enabled";
   btn.addEventListener("click", () => {
-    if (!getViewerBridge()?.restoreFurInspectorSlot(slotId)) return;
-    onRestored();
+    void Promise.resolve(getViewerBridge()?.restoreFurInspectorSlot(slotId)).then((ok) => {
+      if (ok) onRestored();
+    });
   });
   return btn;
 }

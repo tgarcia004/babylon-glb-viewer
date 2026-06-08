@@ -307,7 +307,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
   function captureDiffuseForFur(mesh: Mesh): { texture: BaseTexture; surface: MaterialSurface | null } {
     const mat = mesh.material;
     if (mat instanceof FurMaterial) {
-      return { texture: fabricTex, surface: null };
+      return { texture: mat.diffuseTexture ?? fabricTex, surface: null };
     }
     const surface = extractMaterialSurfaceFromMesh(mat);
     if (!surface) {
@@ -419,12 +419,25 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
     return { texture: tex, bakedMask };
   }
 
-  async function rebuildFur(): Promise<void> {
+  function syncLiveSettingsFromFurMaterial(): void {
+    if (!fur) return;
+    live.settings.furAngle = fur.material.furAngle;
+    live.settings.furDensity = fur.material.furDensity;
+    live.settings.furSpeed = normalizeStoredFurSpeed(fur.material.furSpeed);
+    live.settings.furGravity = fur.material.furGravity.clone();
+  }
+
+  async function rebuildFur(options?: { preserveMaterialState?: boolean }): Promise<void> {
     const generation = ++rebuildGeneration;
     const hadFurBeforeRebuild = !!fur;
+    const preserveMaterialState = options?.preserveMaterialState ?? false;
+    let preRebuildSnapshot: FurEditorSnapshot | null = null;
+
     if (fur) {
       if (!live.enabled) {
         furEditorSnapshot = captureFurEditorSnapshot(fur.material);
+      } else if (preserveMaterialState) {
+        preRebuildSnapshot = captureFurEditorSnapshot(fur.material);
       }
       if (fur.material.heightTexture) {
         furDensityMaskTexture = fur.material.heightTexture;
@@ -466,12 +479,16 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
 
     let texture = captured.texture;
     let bakedMask = false;
-    try {
-      const resolved = await resolveFurDiffuse(hullMesh, surfaceForFur);
-      texture = resolved.texture;
-      bakedMask = resolved.bakedMask;
-    } catch {
-      /* use captured.texture */
+    if (preRebuildSnapshot?.diffuseTexture) {
+      texture = preRebuildSnapshot.diffuseTexture;
+    } else {
+      try {
+        const resolved = await resolveFurDiffuse(hullMesh, surfaceForFur);
+        texture = resolved.texture;
+        bakedMask = resolved.bakedMask;
+      } catch {
+        /* use captured.texture */
+      }
     }
 
     if (generation !== rebuildGeneration) {
@@ -497,13 +514,14 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       return;
     }
 
-    if (furEditorSnapshot && !hadFurBeforeRebuild) {
+    if (preRebuildSnapshot) {
+      restoreFurEditorSnapshot(fur.material, fur.shells, preRebuildSnapshot);
+      applyLiveFurSettings();
+      syncLiveSettingsFromFurMaterial();
+    } else if (furEditorSnapshot) {
       restoreFurEditorSnapshot(fur.material, fur.shells, furEditorSnapshot);
       applyLiveFurSettings();
-      live.settings.furAngle = fur.material.furAngle;
-      live.settings.furDensity = fur.material.furDensity;
-      live.settings.furSpeed = normalizeStoredFurSpeed(fur.material.furSpeed);
-      live.settings.furGravity = fur.material.furGravity.clone();
+      syncLiveSettingsFromFurMaterial();
     } else {
       const autoMask = furDensityMaskTexture ?? hullPbrMaterial?.bumpTexture ?? null;
       if (autoMask) {
@@ -654,6 +672,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       await applyFurDensityMaskToMaterial(scene, fur.material, fur.shells, mask, {
         shellLift: live.settings.shellLift,
         maskStrength: 1,
+        rebakeNoise: false,
       });
     },
     clearFurDensityMask: async () => {
@@ -661,7 +680,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       furDensityMaskTexture = null;
       await applyFurDensityMaskToMaterial(scene, fur.material, fur.shells, null, {
         shellLift: live.settings.shellLift,
-        rebakeNoise: true,
+        rebakeNoise: false,
       });
     },
     getFurShellLift: () => live.settings.shellLift,
@@ -684,7 +703,7 @@ export async function runFurDemo(canvas: HTMLCanvasElement, panel: HTMLElement |
       const tree = document.getElementById("object-hierarchy-tree");
       const detailScroll = detail?.scrollTop ?? 0;
       const treeScroll = tree?.scrollTop ?? 0;
-      void rebuildFur().finally(() => {
+      void rebuildFur({ preserveMaterialState: true }).finally(() => {
         requestAnimationFrame(() => {
           if (detail) detail.scrollTop = detailScroll;
           if (tree) tree.scrollTop = treeScroll;

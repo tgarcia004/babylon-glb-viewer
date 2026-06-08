@@ -5,6 +5,10 @@
   "type": "commonjs",
   "scripts": {
     "dev": "vite",
+    "dev:all": "node scripts/dev-with-host.mjs",
+    "host-server": "node server/host-server.mjs",
+    "host:sync": "node scripts/generate-host-manifest.mjs",
+    "prebuild": "node scripts/generate-host-manifest.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview"
   },

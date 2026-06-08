@@ -41,14 +41,14 @@ export function canRestoreFurSlot(defaults: FurInspectorDefaults | null, slotId:
   return true;
 }
 
-export function restoreFurSlot(
+export async function restoreFurSlot(
   scene: Scene,
   hull: FurMaterial,
   shells: Mesh[],
   defaults: FurInspectorDefaults,
   slotId: FurInspectorSlotId,
   shellLift: number,
-): boolean {
+): Promise<boolean> {
   if (!canRestoreFurSlot(defaults, slotId)) return false;
 
   if (slotId === "diffuse" && defaults.diffuseTexture) {
@@ -60,10 +60,9 @@ export function restoreFurSlot(
   }
 
   if (slotId === "fur-mask") {
-    void applyFurDensityMask(scene, hull, shells, defaults.heightTexture, {
+    await applyFurDensityMask(scene, hull, shells, defaults.heightTexture, {
       shellLift,
       maskStrength: 1,
-      rebakeNoise: true,
     });
     return true;
   }

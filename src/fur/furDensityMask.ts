@@ -77,11 +77,11 @@ export interface ApplyFurDensityMaskOptions {
   shellLift: number;
   /** 0–1 multiplier for mask-driven strand length (height map). */
   maskStrength?: number;
-  /** Re-bake fur noise from mask; set false when clearing mask only. */
+  /** When true, multiply fur noise by mask luminance (legacy). Off by default — mask and noise stay independent. */
   rebakeNoise?: boolean;
 }
 
-/** Apply or clear grayscale fur mask (Babylon heightTexture + furLength + masked fur noise). */
+/** Apply or clear grayscale fur mask (heightTexture + furLength). Does not change furTexture unless rebakeNoise is set. */
 export async function applyFurDensityMask(
   scene: Scene,
   hull: FurMaterial,
@@ -90,7 +90,7 @@ export async function applyFurDensityMask(
   options: ApplyFurDensityMaskOptions,
 ): Promise<void> {
   const strength = options.maskStrength ?? 1;
-  const rebakeNoise = options.rebakeNoise ?? true;
+  const rebakeNoise = options.rebakeNoise ?? false;
 
   if (mask) {
     hull.heightTexture = mask as FurMaterial["heightTexture"];
@@ -100,6 +100,7 @@ export async function applyFurDensityMask(
       hull.furTexture = (await bakeMaskedFurNoise(scene, mask, base)) as FurMaterial["furTexture"];
     }
   } else {
+    hull.heightTexture = null as unknown as FurMaterial["heightTexture"];
     hull.furLength = 0;
     if (rebakeNoise) {
       hull.furTexture = FurMaterial.GenerateTexture("furTexture", scene);

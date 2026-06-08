@@ -126,6 +126,12 @@ export function registerModelFileHandlers(handlers: {
   flushPendingFiles();
 }
 
+/** Load a model from UI paths that bypass drag-and-drop (e.g. hosting server). */
+export function dispatchModelFile(file: File): void {
+  if (!file.size || isJsonPresetFile(file) || !isModelFile(file)) return;
+  acceptFile(file);
+}
+
 export function initModelFileDrop(): void {
   if (initialized) return;
   initialized = true;

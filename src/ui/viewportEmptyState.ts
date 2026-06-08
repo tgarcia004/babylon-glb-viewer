@@ -25,12 +25,11 @@ export interface ViewportEmptyState {
 /** Centered viewport prompt when no model is loaded. File drops use modelFileDrop.ts. */
 export function initViewportEmptyState(): ViewportEmptyState {
   const root = document.getElementById("viewport-empty");
-  const browseBtn = root?.querySelector<HTMLButtonElement>(".viewport-empty-browse");
   const titleEl = root?.querySelector<HTMLElement>(".viewport-empty-title");
   const hintEl = root?.querySelector<HTMLElement>(".viewport-empty-hint");
-  const fileInput = document.querySelector<HTMLInputElement>("#model-upload");
   const defaultTitle = titleEl?.textContent ?? "Drop your model here";
-  const defaultHint = hintEl?.textContent ?? "GLB or glTF · drag onto the view or use the panel";
+  const defaultHint =
+    hintEl?.textContent ?? "GLB or glTF · drag onto the view or browse local / hosting server";
 
   const setVisible = (visible: boolean) => {
     if (!root) return;
@@ -47,11 +46,7 @@ export function initViewportEmptyState(): ViewportEmptyState {
     if (hintEl) hintEl.textContent = defaultHint;
   };
 
-  browseBtn?.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    fileInput?.click();
-  });
+  // Browse actions wired in modelSourcePicker.ts
 
   return { setVisible, setStatus, resetStatus };
 }

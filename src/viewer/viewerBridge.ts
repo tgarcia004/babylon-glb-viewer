@@ -32,7 +32,7 @@ export interface ViewerBridge {
   /** Baselines from when fur was last built (for Edit Object “Default” actions). */
   getFurInspectorDefaults(): FurInspectorDefaults | null;
   canRestoreFurSlot(slotId: FurInspectorSlotId): boolean;
-  restoreFurInspectorSlot(slotId: FurInspectorSlotId): boolean;
+  restoreFurInspectorSlot(slotId: FurInspectorSlotId): boolean | Promise<boolean>;
   restoreFurInspectorProperties(): void | Promise<void>;
   getFurDensityMask(): BaseTexture | null;
   applyFurDensityMask(mask: Texture): Promise<void>;

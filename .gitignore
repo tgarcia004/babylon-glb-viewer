@@ -5,3 +5,10 @@ dist/
 .env
 .env.*
 !.env.example
+
+# GLB/glTF stay on your machine — never published to GitHub (see hosting/models/README.md)
+hosting/models/*.glb
+hosting/models/*.gltf
+public/host-models/*.glb
+public/host-models/*.gltf
+!public/host-models/benchmark-latency.glb

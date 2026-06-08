@@ -65,7 +65,22 @@ if "%MSG%"=="" (
 )
 
 echo.
-echo [1/3] Staging all changes...
+echo [1/4] Syncing host manifest (GLB files stay local, not pushed to GitHub)...
+where node >nul 2>&1
+if errorlevel 1 (
+  echo WARNING: Node.js not found — skipping npm run host:sync.
+  echo WARNING: Node not found, host:sync skipped>>"%LOG%"
+) else (
+  call npm run host:sync
+  if errorlevel 1 (
+    echo ERROR: npm run host:sync failed.
+    echo ERROR: host:sync failed>>"%LOG%"
+    goto :done
+  )
+)
+
+echo.
+echo [2/4] Staging all changes...
 git add -A
 if errorlevel 1 (
   echo ERROR: git add failed.
@@ -80,7 +95,7 @@ if not errorlevel 1 (
   goto :done
 )
 
-echo [2/3] Committing: %MSG%
+echo [3/4] Committing: %MSG%
 git commit -m "%MSG%"
 if errorlevel 1 (
   echo ERROR: git commit failed.
@@ -93,7 +108,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [3/3] Pushing to origin/%BRANCH% ...
+echo [4/4] Pushing to origin/%BRANCH% ...
 git push -u origin %BRANCH%
 if errorlevel 1 (
   echo.

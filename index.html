@@ -73,8 +73,15 @@
               </g>
             </svg>
             <p class="viewport-empty-title">Drop your model here</p>
-            <p class="viewport-empty-hint">GLB or glTF · drag onto the view or use the panel</p>
-            <button type="button" class="viewport-empty-browse">Browse file</button>
+            <p class="viewport-empty-hint">GLB or glTF · drag onto the view or browse below</p>
+            <div class="viewport-empty-actions">
+              <button type="button" id="viewport-browse-local" class="viewport-empty-browse viewport-empty-browse--primary">
+                Browse local file
+              </button>
+              <button type="button" id="viewport-browse-host" class="viewport-empty-browse">
+                Browse hosting server
+              </button>
+            </div>
           </div>
         </div>
         <button
@@ -179,16 +186,11 @@
           </nav>
         </header>
 
-        <input
-          id="model-upload"
-          type="file"
-          accept=".glb,.gltf,model/gltf-binary,model/gltf+json"
-          hidden
-        />
+        <input id="model-upload" type="file" accept=".glb,.gltf" class="sr-only-file-input" />
 
         <div id="workspace-preview" class="workspace-page is-active" data-workspace-page="preview">
         <div class="panel-scroll">
-          <section class="panel-section collapsible" data-section="model" data-default-open="closed">
+          <section class="panel-section collapsible" data-section="model" data-default-open="open">
             <button type="button" class="section-toggle" aria-expanded="false">
               <span class="section-toggle-text">
                 <span class="section-title">Model</span>
@@ -198,11 +200,18 @@
             </button>
             <div class="section-body">
               <div class="section-body-inner">
-                <label class="upload-zone" for="model-upload">
-                  <span class="upload-icon" aria-hidden="true">↑</span>
-                  <span class="upload-label">Upload GLB or glTF</span>
-                  <span class="upload-hint">Drag & drop or click to browse</span>
-                </label>
+                <div class="upload-actions upload-zone">
+                  <button type="button" id="model-browse-local" class="upload-action upload-action--primary">
+                    <span class="upload-icon" aria-hidden="true">↑</span>
+                    <span class="upload-label">Browse local file</span>
+                    <span class="upload-hint">Pick GLB or glTF from your computer</span>
+                  </button>
+                  <button type="button" id="model-browse-host" class="upload-action">
+                    <span class="upload-icon" aria-hidden="true">☁</span>
+                    <span class="upload-label">Browse hosting server</span>
+                    <span class="upload-hint">Load from shared models folder</span>
+                  </button>
+                </div>
                 <div id="model-file-name"></div>
               </div>
             </div>

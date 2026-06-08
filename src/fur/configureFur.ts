@@ -196,9 +196,7 @@ export function syncShellMaterials(shells: Mesh[], fur: FurMaterial): void {
     mat.transparencyMode = fur.transparencyMode;
     mat.diffuseColor = fur.diffuseColor.clone();
     mat.diffuseTexture = fur.diffuseTexture;
-    if (fur.heightTexture) {
-      mat.heightTexture = fur.heightTexture;
-    }
+    mat.heightTexture = fur.heightTexture as FurMaterial["heightTexture"];
     mat.furTexture = fur.furTexture;
     mat.furAngle = fur.furAngle;
     mat.furDensity = fur.furDensity;

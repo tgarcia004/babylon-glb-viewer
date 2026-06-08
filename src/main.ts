@@ -8,9 +8,15 @@ import { initViewportFocusToggle } from "./ui/viewportFocusToggle";
 import { initViewportPerfIndicator } from "./ui/viewportPerfIndicator";
 import { initPanelResize } from "./ui/panelResize";
 import { initWorkspaceTabs } from "./ui/workspaceTabs";
+import { initHostModelBrowser } from "./ui/hostModelBrowser";
+import { prepLocalFileInput } from "./ui/localFilePicker";
+import { initModelSourcePicker } from "./ui/modelSourcePicker";
 
 initPreventBrowserFileDrop();
+prepLocalFileInput();
 initModelFileDrop();
+initHostModelBrowser();
+initModelSourcePicker();
 initThemeSwitcher();
 initWorkspaceTabs();
 initPanelResize();

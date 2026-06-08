@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "generatedAt": "2026-06-08T23:19:57.820Z",
+  "models": [
+    {
+      "name": "benchmark-latency.glb",
+      "url": "benchmark-latency.glb",
+      "sizeBytes": 1664,
+      "updatedAt": "2026-06-08T23:01:57.634Z",
+      "purpose": "latency-benchmark",
+      "label": "Latency benchmark (GitHub)"
+    },
+    {
+      "name": "Bellevue_Woven_Chair_Dining_Arm_ReMesh_100k 4.glb",
+      "url": "Bellevue_Woven_Chair_Dining_Arm_ReMesh_100k 4.glb",
+      "sizeBytes": 232887608,
+      "updatedAt": "2026-06-08T22:43:13.712Z"
+    },
+    {
+      "name": "Bellevue_Woven_Chair_Dining_Arm_ReMesh_200k.glb",
+      "url": "Bellevue_Woven_Chair_Dining_Arm_ReMesh_200k.glb",
+      "sizeBytes": 235874800,
+      "updatedAt": "2026-06-08T22:43:12.789Z"
+    },
+    {
+      "name": "Bellevue_Woven_Chair_Dining_Arm_ReMesh_50k.glb",
+      "url": "Bellevue_Woven_Chair_Dining_Arm_ReMesh_50k.glb",
+      "sizeBytes": 228712356,
+      "updatedAt": "2026-06-08T22:43:10.499Z"
+    }
+  ]
+}
